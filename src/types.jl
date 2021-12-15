@@ -100,6 +100,8 @@ end
     JusCmd(cfg, ws, ns, args::Vector) = new{Symbol(lowercase(args[1]))}(cfg, ws, ns, args[2:end])
 end
 
+connection(cmd::JusCmd) = cmd.config.connections[cmd.ws]
+
 ID(cmd::JusCmd{T}) where T = ID(cmd.namespace, UInt(0))
 
 """

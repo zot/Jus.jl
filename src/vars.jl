@@ -112,8 +112,8 @@ function Var(cmd::JusCmd; id::ID, name = "", args...)
 end
 
 function newvar(cmd::JusCmd, var::Var)
-    var.parent !== EMPTYID && var.name != "" && cmd.config[parent][var.name] = var
-    changes = get(()-> Set{Tuple{Symbol, Symbol}}(), cmd.config.changes, var)
+    var.parent !== EMPTYID && var.name != "" && (cmd.config[parent][var.name] = var)
+    changes = get(()-> Set{Tuple{Symbol, Any}}(), cmd.config.changes, var)
     push!(changes, (:set, keys(var.metadata)))
     var
 end

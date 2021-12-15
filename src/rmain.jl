@@ -9,7 +9,7 @@ try
     includet("load.jl")
     dir=joinpath(dirname(Pkg.project().path), "src")
     map(f-> Revise.track(Jus, joinpath(dir, f)),
-        ["types.jl", "protocol.jl", "vars.jl", "commands.jl", "Jus.jl", "example1.jl"])
+        ["types.jl", "vars.jl", "Jus.jl", "example1.jl"])
 
     using .Jus
 

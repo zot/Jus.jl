@@ -11,10 +11,9 @@ import Base.@kwdef
 import Base.Iterators.flatten
 
 include("types.jl")
-include("protocol.jl")
 include("vars.jl")
-include("commands.jl")
 include("Jus.jl")
+include("server.jl")
 
 end
 
