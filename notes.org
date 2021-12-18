@@ -1,0 +1,28 @@
+* Commands
+Monitored values are pushed
+** 'set' [[-c] [[-m path] | [path value]]] ...
+** 'get' path ...
+** 'observe' [true | false] varid ...
+* Metadata (these are all maintained by normal handlers)
+** create: create data of the given type when the variable is created
+** priority: =high=, =normal=, or =low= -- when to process values for this variable in a batch
+** presenter: on creation, replace the value with the results of the constructor on the value
+useful when combined with =path=
+** transformer: transforms values of child variables with this transformerId
+** transformerId: cue to ancestor to transform this variable's value
+** type: the value's type
+** viewdefs: manage a set of viewdef variables named with =type, namespace=
+keep it properly stocked by monitoring =type= metadata values
+** path: use the object model for values
+*** the special value =.= means to keep the existing value
+a leading =.= will be stripped if a value is given
+*** space separated fields and/or functions: =a b() c() d=
+*** function path elements: =a f() g()=
+- functions in the first or middle positions should handle one argument
+- a function in the last position
+  - =nothing= will be returned if it does not take one argument or does not have read access
+  - setting will have no effect if it does not take two arguments or does not have write access
+** access=r|w|rw -- metadata that determines accessibility for the path
+* Security
+** sensitive metadata
+The server can scrape and create template variables to prevent paths from leaking over connections
