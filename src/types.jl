@@ -43,6 +43,7 @@ A variable:
     metadata::Dict{Symbol, AbstractString} = Dict()
     namedchildren::Dict{Symbol, Var} = Dict()
     indexedchildren::Vector{Var} = []
+    properties::Dict{Symbol, Any} = Dict() # misc properties of any type
 end
 
 @kwdef mutable struct Namespace
@@ -97,7 +98,9 @@ end
     ws::HTTP.WebSockets.WebSocket
     namespace::AbstractString
     args::Vector
-    JusCmd(cfg, ws, ns, args::Vector) = new{Symbol(lowercase(args[1]))}(cfg, ws, ns, args[2:end])
+    cancel::Bool = false
+    JusCmd(config, ws, namespace, args::Vector) =
+        new{Symbol(lowercase(args[1]))}(config, ws, namespace, args[2:end], false)
 end
 
 connection(cmd::JusCmd) = cmd.config.connections[cmd.ws]
@@ -107,26 +110,28 @@ ID(cmd::JusCmd{T}) where T = ID(cmd.namespace, UInt(0))
 """
     VarCommand{Cmd, Path}
 
-Handlers should return a value: PASS, FAIL, SUBSTITUTE.
-
-* PASS: indicates that processing should continue
-* FAIL: indicates that processing has failed and should stop
-* SUBSTITUTE: indicates that processing has succeeded and should return immediately
-
+Handlers should return a command, either the given one or a new one.
 Handlers can alter var during processing.
-
+Each command triggers a refresh.
 
 COMMANDS
 
 Set: set a variable
 Get: retrieve a value for a variable
+Observe: observe variables
 """
-struct VarCommand{Cmd, Path}
+struct VarCommand{Cmd, Arg}
     var::Var
     config::Config
     connection::Connection
-    function VarCommand(cmd::Symbol, path::Tuple{Vararg{Symbol}}, var, config, con)
-        new{cmd, path}(var, config, con)
+    cancel::Bool
+    arg
+    data
+    function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}, var, config, con)
+        new{cmd, path}(var, config, con, false, nothing, nothing)
+    end
+    function VarCommand{Cmd, Arg}(cmd::VarCommand) where {Cmd, Arg}
+        new{Cmd, Arg}(cmd.var, cmd.config, cmd.connection, cmd.cancel, cmd.arg, cmd.data)
     end
 end
 

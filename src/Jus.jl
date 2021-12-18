@@ -2,7 +2,7 @@ using Match
 
 import Base.Iterators.flatten
 
-export exec
+export exec, serve
 
 verbose = false
 
@@ -156,11 +156,99 @@ function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value)
 end
 
 """
-    handle(app::APP_CLASS, var::VarCommand{COMMAND, PATH})
+    route(value, cmd)
 
-Handle a variable command (get or set).
-
-When a variable is set Jus attempts set_variable(ancestor, var_command)
-for each ancestor, starting at the top
+Route a command.
+See handle() for details on commands.
 """
-handle(value, cmd) = PASS
+function route(value, cmd)
+    println("route: '$(value)', $(cmd)")
+    path = []
+    cur = cmd.var.id
+    while cur !== EMPTYID
+        push!(path, cmd.config[cur])
+        cur = cmd.var.parent
+    end
+    reverse!(path)
+    route(path[1], value, cmd, path)
+end
+
+function route(var, value, cmd, path)
+    println("route ancestor: '$(value)', $(cmd)")
+    if cmd.var === var
+        handle(value, cmd)
+    else
+        cmd = handle_child(var, value, cmd, path)
+        !cmd.cancel && route(path[2], value, cmd, @view path[2:end])
+    end
+end
+
+"""
+    handle_child(var, value, cmd, path)
+
+Allows ancestor variables to alter or cancel commands.
+See handle() for details on commands.
+"""
+handle_child(var, value, cmd, path) = cmd
+
+"""
+    handle(app::APP_CLASS, var::VarCommand{Command, Arg})
+
+Handle a variable command.
+
+COMMANDS
+
+  :create   Create a variable
+
+  :get      Determine the new value for a variable. By default, variables retain their values
+            but handlers can change this behavior.
+
+  :set      Change the value of a variable
+
+  :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name
+
+  :observe  A connection is starting to observe this variable
+"""
+function handle(value, cmd)
+    println("@@@ DEFAULT COMMAND HANDLER: $(cmd)")
+end
+
+function handle(value, cmd::VarCommand{:metadata, (:app,)})
+    println("@@@ APP METADATA: ", cmd.var.metadata[:app])
+end
+
+function handle(value, cmd::VarCommand{:metadata, (:path,)})
+    println("@@@ PATH METADATA: ", cmd)
+    cmd.var.properties[:path] = split(cmd.var.metadata[:path])
+end
+
+writeable(var::Var) =
+    !haskey(var.properties, :access) ||
+    var.properties[:access] === :w ||
+    var.properties[:access] === :rw
+
+function handle(value, cmd::VarCommand{:set, ()})
+    println("@@@ BASIC SET: ", cmd)
+    if haskey(cmd.var.properties, :path) && writeable(cmd.var)
+        handle(value, VarCommand{:set, (:path, cmd.var.properties[:path]...)}(cmd))
+    else
+        cmd.var.value = cmd.arg
+    end
+end
+
+readable(var::Var) =
+    !haskey(var.properties, :access) ||
+    var.properties[:access] === :r ||
+    var.properties[:access] === :rw
+
+"""
+    handle(...{:get})
+
+called during refreshes
+"""
+function handle(value, cmd::VarCommand{:get, ()})
+    println("@@@ BASIC GET: ", cmd)
+    if cmd.var.parent !== EMPTYID && haskey(cmd.var.properties, :path) && readable(cmd.var)
+        handle(value, VarCommand{:get, (:path, cmd.var.properties[:path]...)}(cmd))
+    end
+end

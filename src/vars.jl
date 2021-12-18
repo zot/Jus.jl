@@ -101,13 +101,14 @@ function Var(cmd::JusCmd; id::ID, name = "", args...)
         m = methods(handle, (typeof(v.value), typeof(vcmd)))
         if length(m) === 1 && m[1].sig !== Tuple{typeof(Main.Jus.handle), Any, Any}
             println("CALLING HANDLER FOR $(vcmd)")
-            handle(v.value, vcmd)
+            route(v.value, vcmd)
         elseif length(m) > 1
             throw("More than one possible handler for $(vcmd)")
         else
             println("No handler for $(vcmd)")
         end
     end
+    route(v.value, VarCommand(cmd, :create, (), v))
     v
 end
 

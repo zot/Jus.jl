@@ -23,7 +23,7 @@ export class Ex1 {
     $('#observe').addEventListener('click', ()=> this.observe())
     $('#variable').addEventListener('keydown', ()=> $('#id').innerHTML = '')
     await this.jus.ready;
-    this.root = (await this.jus.set('-c', `@/0:app=person_app`, 'true'))[0];
+    this.root = (await this.jus.set('-c', `@/0:app=PersonApp`, 'true'))[0];
     $('#variable').value = this.root
     console.log("JUS IS READY");
     console.log(`CREATED ROOT: ${this.root}`);

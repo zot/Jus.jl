@@ -15,11 +15,6 @@ end
     new_person::Function
 end
 
-function Jus.handle(value, cmd::VarCommand{:metadata, (:app,)})
-    println("METADATA: ", cmd)
-    PASS
-end
-
 function handle(app::PersonApp, cmd::VarCommand{:set, (:namefield,)})
     if haskey(app.people, app.namefield)
         set_metadata(cmd, :new_person, :note, "There is already a person named $(app.namefield)")
