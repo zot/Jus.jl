@@ -15,6 +15,7 @@ export class Ex1 {
   }
 
   async init() {
+    console.log("Contacting Jus");
     this.jus = new Jus('localhost:7777', (variable, value)=> this.update(variable, value));
     this.namespace = crypto.randomUUID();
     this.secret = crypto.randomUUID();
@@ -23,7 +24,7 @@ export class Ex1 {
     $('#observe').addEventListener('click', ()=> this.observe())
     $('#variable').addEventListener('keydown', ()=> $('#id').innerHTML = '')
     await this.jus.ready;
-    this.root = (await this.jus.set('-c', `@/0:app=PersonApp`, 'true'))[0];
+    this.root = (await this.jus.set('-c', `@/0:create=PersonApp`, 'true'))[0];
     $('#variable').value = this.root
     console.log("JUS IS READY");
     console.log(`CREATED ROOT: ${this.root}`);
@@ -33,7 +34,7 @@ export class Ex1 {
     console.log(`GET ${$('#variable').value}`);
     const result = await this.jus.get($('#variable').value)
     $('#id').innerHTML = result[0];
-    $('#value').value = result[1];
+    $('#value').value = JSON.stringify(result[1]);
   }
   
   async set() {

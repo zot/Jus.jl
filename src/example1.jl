@@ -12,7 +12,11 @@ end
     people = Dict()
     namefield = ""
     addressfield = ""
-    new_person::Function
+end
+
+function handle(app::PersonApp, cmd::VarCommand{:create})
+    println("@@@ EXAMPLE PERSON APP CREATED")
+    ## initialize app here
 end
 
 function handle(app::PersonApp, cmd::VarCommand{:set, (:namefield,)})

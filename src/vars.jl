@@ -7,8 +7,24 @@ const PATH_COMPONENT = r"^([-[:alnum:]]+|@)/([0-9]+)$"
 const VAR_NAME = r"^([0-9]+|\pL\p{Xan}*)(?::((\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(?:,(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?)*))?$"
 const METAPROP = r"(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(,|$)"
 
+function oid(cmd::JusCmd, obj)
+    get(connection(cmd).data2oid, obj) do
+        oid = connection(cmd).nextOid += 1
+        connection(cmd).oid2data[oid] = WeakRef(obj)
+        oid
+    end
+end
+
 json(cmd::JusCmd, id::ID) = "$(id.namespace === cmd.namespace ? "@" : id.namespace)/$(id.number)"
 json(id::ID) = "$(id.namespace)/$(id.number)"
+function json(cmd::JusCmd, data)
+    try
+        JSON3.write(data)
+        data
+    catch
+        cmd.config.verbose ? (; ref = oid(cmd, data), repr = repr(data)) : (; ref = oid(cmd, data))
+    end
+end
 
 Base.haskey(cfg::Config, id::ID) = haskey(cfg.vars, id)
 Base.getindex(cfg::Config, id::ID) = cfg.vars[id]
@@ -97,7 +113,7 @@ function Var(cmd::JusCmd; id::ID, name = "", args...)
     ns.curid = max(ns.curid, id.number)
     v = cmd.config[id] = Var(; args..., id, name)
     for (mk, mv) in v.metadata
-        vcmd = VarCommand(cmd, :metadata, (mk,), v)
+        vcmd = VarCommand(cmd, :metadata, (mk,), v, creating = true)
         m = methods(handle, (typeof(v.value), typeof(vcmd)))
         if length(m) === 1 && m[1].sig !== Tuple{typeof(Main.Jus.handle), Any, Any}
             println("CALLING HANDLER FOR $(vcmd)")
@@ -108,7 +124,7 @@ function Var(cmd::JusCmd; id::ID, name = "", args...)
             println("No handler for $(vcmd)")
         end
     end
-    route(v.value, VarCommand(cmd, :create, (), v))
+    route(v.value, VarCommand(cmd, :create, (), v, creating = true))
     v
 end
 
@@ -119,12 +135,12 @@ function newvar(cmd::JusCmd, var::Var)
     var
 end
 
-function addvar(cmd::JusCmd, parent::ID, name::Integer, id::ID, value::AbstractString, metadata::Dict{Symbol, AbstractString})
+function addvar(cmd::JusCmd, parent::ID, name::Integer, id::ID, value, metadata::Dict{Symbol, AbstractString})
     v = Var(cmd; id, name, value, metadata, parent)
     newvar(cmd, v)
 end
 
-function addvar(cmd::JusCmd, parent::ID, name::AbstractString, id::ID, value::AbstractString, metadata::Dict{Symbol, AbstractString})
+function addvar(cmd::JusCmd, parent::ID, name::AbstractString, id::ID, value, metadata::Dict{Symbol, AbstractString})
     name == "" && parent != EMPTYID && return addvar(cmd, parent, length(cmd.config[parent]) + 1, id, value, metadata)
     v = Var(cmd; id, name, value, metadata, parent)
     newvar(cmd, v)

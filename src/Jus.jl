@@ -124,7 +124,7 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     i = 2
     while i <= length(args)
         @match args[i] begin
-            "-v" => (config.verbose = log)
+            "-v" => (config.verbose = true)
             "-x" => (config.secret = args[i += 1])
             "-c" => begin
                 parseAddr(config, args[i += 1])
@@ -158,28 +158,30 @@ end
 """
     route(value, cmd)
 
-Route a command.
+Route a command, calling handle_child for each ancestor of the variable, starting with the root
 See handle() for details on commands.
 """
-function route(value, cmd)
-    println("route: '$(value)', $(cmd)")
+function route(value, cmd::VarCommand)
     path = []
     cur = cmd.var.id
     while cur !== EMPTYID
         push!(path, cmd.config[cur])
         cur = cmd.var.parent
     end
-    reverse!(path)
-    route(path[1], value, cmd, path)
+    route(value, cmd, reverse(path))
 end
 
-function route(var, value, cmd, path)
-    println("route ancestor: '$(value)', $(cmd)")
-    if cmd.var === var
+function route(value, cmd::VarCommand, path)
+    cmd.cancel && return cmd
+    if length(path) === 1
         handle(value, cmd)
     else
-        cmd = handle_child(var, value, cmd, path)
-        !cmd.cancel && route(path[2], value, cmd, @view path[2:end])
+        result = handle_child(path[1], path[end], value, cmd, path)
+        if isa(result, VarCommand)
+            # only replace it if the developer returns a replacement command
+            cmd = result
+        end
+        route(value, cmd, @view path[2:end])
     end
 end
 
@@ -189,23 +191,24 @@ end
 Allows ancestor variables to alter or cancel commands.
 See handle() for details on commands.
 """
-handle_child(var, value, cmd, path) = cmd
+handle_child(ancestor, var, value, cmd, path) = cmd
 
 """
-    handle(app::APP_CLASS, var::VarCommand{Command, Arg})
+    handle(value, var::VarCommand{Command, Arg})
 
 Handle a variable command.
 
 COMMANDS
 
-  :create   Create a variable
+  :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name
+            sent before the :create command
+
+  :create   The variable has just been created
 
   :get      Determine the new value for a variable. By default, variables retain their values
             but handlers can change this behavior.
 
   :set      Change the value of a variable
-
-  :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name
 
   :observe  A connection is starting to observe this variable
 """
@@ -213,8 +216,12 @@ function handle(value, cmd)
     println("@@@ DEFAULT COMMAND HANDLER: $(cmd)")
 end
 
-function handle(value, cmd::VarCommand{:metadata, (:app,)})
-    println("@@@ APP METADATA: ", cmd.var.metadata[:app])
+function handle(value, cmd::VarCommand{:metadata, (:create,)})
+    if cmd.creating
+        cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
+        println("@@@ CREATED: ", cmd.var.value)
+        VarCommand(cmd, arg = cmd.var.value)
+    end
 end
 
 function handle(value, cmd::VarCommand{:metadata, (:path,)})

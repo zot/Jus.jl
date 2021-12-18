@@ -1,6 +1,6 @@
 using HTTP
 
-import Base.@kwdef
+import Base.@kwdef, Base.WeakRef
 import JSON3.StructTypes
 
 export Config, State, UnknownVariable, ID, Var, JusCmd, ROOT, EMPTYID, Namespace, Connection, VarCommand
@@ -39,7 +39,7 @@ A variable:
     parent::ID
     id::ID = ROOT # root is just the default value and will most likely be changed
     name::Union{Symbol, Integer} = ""
-    value::String = ""
+    value = nothing
     metadata::Dict{Symbol, AbstractString} = Dict()
     namedchildren::Dict{Symbol, Var} = Dict()
     indexedchildren::Vector{Var} = []
@@ -52,7 +52,7 @@ end
     curid::Int = 0
 end
 
-@kwdef struct Connection
+@kwdef mutable struct Connection
     ws::HTTP.WebSockets.WebSocket
     namespace::String
     observing::Set{ID} = Set()
@@ -61,6 +61,9 @@ end
     sets::Set{ID} = Set()
     deletes::Set{ID} = Set()
     metadata_sets::Set{Tuple{ID, Symbol}} = Set()
+    oid2data::Dict{Int, WeakRef} = Dict()
+    data2oid::WeakKeyDict{Any, Int} = WeakKeyDict()
+    nextOid::Int = 0
 end
 
 """
@@ -80,7 +83,7 @@ Singleton for this program's state.
     server = false
     diag = false
     proxy = false
-    verbose = (args...)-> nothing
+    verbose::Bool = false
     cmd = ""
     args = String[]
     client = ""
@@ -120,23 +123,27 @@ Set: set a variable
 Get: retrieve a value for a variable
 Observe: observe variables
 """
-struct VarCommand{Cmd, Arg}
+@kwdef struct VarCommand{Cmd, Arg}
     var::Var
     config::Config
     connection::Connection
-    cancel::Bool
-    arg
-    data
-    function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}, var, config, con)
-        new{cmd, path}(var, config, con, false, nothing, nothing)
-    end
-    function VarCommand{Cmd, Arg}(cmd::VarCommand) where {Cmd, Arg}
-        new{Cmd, Arg}(cmd.var, cmd.config, cmd.connection, cmd.cancel, cmd.arg, cmd.data)
-    end
+    cancel::Bool = false
+    creating::Bool = false
+    arg = nothing
+    data = nothing
 end
 
-function VarCommand(jcmd::JusCmd, cmd::Symbol, path::Tuple{Vararg{Symbol}}, var)
-    VarCommand(cmd, path, var, jcmd.config, jcmd.config.connections[jcmd.ws])
+function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}; args...)
+    VarCommand{cmd, path}(; args...)
 end
+function VarCommand(cmd::VarCommand{Cmd, Arg}; args...) where {Cmd, Arg}
+    VarCommand{Cmd, Arg}(; cmd.var, cmd.config, cmd.connection, cmd.cancel, cmd.creating, cmd.arg, cmd.data, args...)
+end
+function VarCommand(jcmd::JusCmd, cmd::Symbol, path::Tuple{Vararg{Symbol}}, var; args...)
+    VarCommand(cmd, path; var, jcmd.config, connection = connection(jcmd), args...)
+end
+
+cancel(cmd::VarCommand) = VarCommand(cmd; cancel = true)
+arg(cmd::VarCommand, arg) = VarCommand(cmd; arg)
 
 Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}()")
