@@ -151,6 +151,16 @@ function observe(config::Config)
     config.changes = Dict()
 end
 
+function refresh(cmd::JusCmd)
+    for (_, v) in cmd.config.vars
+        v.parent == EMPTYID && refresh(cmd, v)
+    end
+end
+
+function refresh(cmd::JusCmd, var::Var)
+    cmd = VarCommand(:get, (); var, config = cmd.config, connection = cmd.connection)
+end
+
 function serve(config::Config, ws)
     (; namespace, secret) = input(ws)
     if haskey(config.namespaces, namespace)

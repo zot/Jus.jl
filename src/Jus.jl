@@ -182,12 +182,14 @@ function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value::AbstractSt
 end
 
 """
-    route(value, cmd)
+    route(parent_value, cmd)
 
-Route a command, calling handle_child for each ancestor of the variable, starting with the root
+Route a command, calling handle_child for each ancestor of the variable, starting with the root.
+Returns the command.
+
 See handle() for details on commands.
 """
-function route(value, cmd::VarCommand)
+function route(parent_value, cmd::VarCommand)
     path = []
     cur = cmd.var.id
     while cur !== EMPTYID
@@ -195,22 +197,21 @@ function route(value, cmd::VarCommand)
         push!(path, var)
         cur = var.parent
     end
-    route(value, cmd, reverse(path))
+    route(parent_value, cmd, reverse(path))
 end
 
-function route(value, cmd::VarCommand, path)
+function route(parent_value, cmd::VarCommand, path)
     cmd.cancel && return cmd
     if length(path) === 1
-        handle(value, cmd)
+        override(cmd, handle(parent_value, cmd))
     else
-        result = handle_child(path[1], path[end], value, cmd, path)
-        if isa(result, VarCommand)
-            # only replace it if the developer returns a replacement command
-            cmd = result
-        end
-        route(value, cmd, @view path[2:end])
+        cmd = override(cmd, handle_child(path[1], path[1].value, path[end], parent_value, cmd, path))
+        cmd = override(cmd, route(parent_value, cmd, @view path[2:end]))
+        override(cmd, finish_handle_child(path[1], path[1].value, path[end], parent_value, cmd, path))
     end
 end
+
+override(cmd::VarCommand, result) = isa(result, VarCommand) ? result : cmd
 
 """
     handle_child(var, value, cmd, path)
@@ -219,7 +220,15 @@ Allows ancestor variables to alter or cancel commands.
 `handle_child` can replace the given VarCommand by return a different one
 See handle() for details on commands.
 """
-handle_child(ancestor, var, value, cmd, path) = cmd
+handle_child(ancestor_var, ancestor, var, value, cmd, path) = nothing
+
+"""
+    finish_handle_child(var, value, cmd, path)
+
+Allows ancestor variables to alter or cancel commands after they have been processed.
+See handle() for details on commands.
+"""
+finish_handle_child(ancestor_var, ancestor, var, value, cmd, path) = nothing
 
 """
     handle(value, var::VarCommand{Command, Arg})
