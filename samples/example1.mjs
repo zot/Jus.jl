@@ -26,6 +26,8 @@ export class Ex1 {
     await this.jus.ready;
     this.root = (await this.jus.set('-c', `@/0:create=PersonApp`, 'true'))[0];
     $('#variable').value = this.root
+    await this.jus.set('-c', `${this.root} namefield:path=namefield`, 'true')
+    await this.jus.set('-c', `${this.root} new_person:path=new_person`, 'true')
     console.log("JUS IS READY");
     console.log(`CREATED ROOT: ${this.root}`);
   }
@@ -59,6 +61,6 @@ export class Ex1 {
       this.values[variable] = {div: update, value: update.querySelector('[name=value]')};
       $('#observations').appendChild(update);
     }
-    this.values[variable].value.innerHTML = value;
+    this.values[variable].value.innerHTML = JSON.stringify(value);
   }
 }

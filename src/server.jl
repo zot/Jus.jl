@@ -1,3 +1,8 @@
+const NUM = r"^[0-9]+$"
+const NAME = r"^\pL\p{Xan}*$"
+
+export set_metadata
+
 function resolve(cmd::JusCmd, vars, str)
     if str == "?"
         ID(cmd)
@@ -8,7 +13,7 @@ function resolve(cmd::JusCmd, vars, str)
     elseif (m = match(PATH_COMPONENT, str)) !== nothing
         ID(m[1] == "@" ? cmd.namespace : m[1], parse(UInt, m[2]))
     else
-        str
+        Symbol(str)
     end
 end
 
@@ -20,10 +25,10 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
         path = m[1]
         metadata = parsemetadata(m[2], metadata)
     end
-    path = split(path, '.')
-    println("PATH: $(path)")
+    path = split(path)
+    @debug("PATH: $(path)")
     components = map(c-> resolve(cmd, vars, c), path)
-    println("COMPONENTS: $(components)")
+    @debug("COMPONENTS: $(components)")
     last = components[end]
     if length(components) > 1 && isa(components[1], ID)
         parent = components[1]
@@ -32,6 +37,8 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
         parent = EMPTYID
         components = components[1:end - 1]
     end
+    @debug("PARENT COMPONENTS: $(repr(components))")
+    @debug("LAST: $(repr(last))")
     for (i, v) in enumerate(components) # path should only be names and numbers
         isemptyid(v) && throw("'?' in the middle of $(path)")
         isa(v, ID) && throw("ID in the middle of $(path)")
@@ -39,29 +46,33 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
         parent = cmd.config[parent][v].id
     end
     metadata === nothing && (metadata = Dict{Symbol, AbstractString}())
+    @debug("PARENT: $(repr(parent))")
+    @debug("CHECKING LAST...")
     if isemptyid(last)
         !create && throw("'?' without -c")
         parent != EMPTYID && throw("'?' at the end of path: $(path)")
-        addvar(cmd, parent, "", last, value, metadata)
+        addvar(cmd, parent, Symbol(""), last, value, metadata), true
     elseif isa(last, ID)
         parent != EMPTYID && throw("ID at the end of path: $(path)")
-        cmd.config[last]
+        cmd.config[last], false
     elseif parent == EMPTYID
         throw("Attempt to get path with no parent, path: $(path)")
-    elseif create && isa(last, Union{AbstractString, Integer}) && !haskey(cmd.config[parent], last)
-        addvar(cmd, parent, last, ID(cmd), value, metadata)
+    elseif create && isa(last, Union{Symbol, Integer}) && !haskey(cmd.config[parent], last)
+        addvar(cmd, parent, last, ID(cmd), value, metadata), true
     else
-        cmd.config[parent][last]
+        @debug("PATH -> $(parent).$(repr(last))")
+        @debug("PARENT: $(repr(cmd.config[parent]))")
+        cmd.config[parent][last], false
     end
 end
 
 function command(cmd::JusCmd{:set})
-    let created = [], vars = [], create, metadata
+    let new = [], vars = [], create, metadata
         function newset()
             create = false
             metadata = Dict{Symbol, AbstractString}()
         end
-        println("@ SET (FRED 6): $(cmd.args)")
+        @debug("@ SET (FRED 6): $(cmd.args)")
         pos = 1
         newset()
         while pos <= length(cmd.args)
@@ -73,10 +84,11 @@ function command(cmd::JusCmd{:set})
                 end
                 unknown => begin
                     value = cmd.args[pos + 1]
-                    var = findvar(cmd, create, vars, cmd.args[pos], metadata, value)
-                    create && push!(created, var)
+                    var, created = findvar(cmd, create, vars, cmd.args[pos], metadata, value)
+                    @debug("FOUND VARIABLE: $(var)")
+                    created && push!(new, var)
                     parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
-                    route(parentvalue, VarCommand(cmd, :set, (), var, arg = create ? var.value : value))
+                    route(parentvalue, VarCommand(cmd, :set, (), var, arg = created ? var.value : value))
                     !cmd.cancel && push!(vars, var)
                     newset()
                     pos += 1
@@ -84,24 +96,15 @@ function command(cmd::JusCmd{:set})
             end
             pos += 1
         end
-        output(cmd.ws, result = map(v-> json(cmd, v.id), created))
-        for (_, connection) in cmd.config.connections
-            vset = filter(v-> within(cmd.config, v, connection.observing), vars)
-            println("VSET: $(vset)")
-            observed = intersect(connection.observing, map(v-> v.id, vset))
-            println("OBSERVED: $(observed)")
-            if !isempty(observed)
-                output(connection.ws, update = [flatten(map(id-> (json(cmd, id), safe(cmd.config[id].value)), [observed...]))...])
-            end
-        end
+        output(cmd.ws, result = map(v-> json(cmd, v.id), new))
     end
 end
 
 function command(cmd::JusCmd{:get})
     vars = []
-    println("@ GET ARGS: $(cmd.args)")
+    @debug("@ GET ARGS: $(cmd.args)")
     for path in cmd.args
-        var = findvar(cmd, false, vars, path)
+        var, _ = findvar(cmd, false, vars, path)
         push!(vars, var)
     end
     output(cmd.ws, result = [flatten(map(v-> (json(cmd, v.id), json(cmd, v.value)), vars))...])
@@ -110,21 +113,49 @@ end
 function command(cmd::JusCmd{:observe})
     vars = []
     for path in cmd.args
-        push!(vars, findvar(cmd, false, vars, path).id)
+        var, _ = findvar(cmd, false, vars, path)
+        push!(vars, var.id)
     end
-    println("@ OBSERVE ARGS: $(cmd.args)")
+    @debug("@ OBSERVE ARGS: $(cmd.args)")
     union!(connection(cmd).observing, vars)
-    println("OBSERVED VARS:", map(v-> v.id, allvars(cmd.config, connection(cmd).observing...)))
+    @debug("OBSERVED VARS: $(repr(map(v-> v.id, allvars(cmd.config, connection(cmd).observing...))))")
     observed = [flatten(map(id-> [json(id), cmd.config[id].value], [connection(cmd).observing...]))...]
-    println("OBSERVED: ", observed)
-    output(cmd.ws, result = [flatten(map(id-> (json(cmd, id), json(cmd, cmd.config[id].value)), [connection(cmd).observing...]))...])
+    @debug("OBSERVED: $(repr(observed))")
+    output(cmd.ws, update = Dict(json(cmd, vid) => (
+        set = json(cmd, cmd.config[vid].value),
+        metadata = cmd.config[vid].metadata
+    ) for vid in connection(cmd).observing))
+end
+
+function observe(config::Config)
+    isempty(config.changes) && return
+    for (_, connection) in config.connections
+        @debug("CHECKING CONNECTION OBSERVING: $(repr(connection.observing))")
+        changes = filter(e-> within(config, e[1], connection.observing), config.changes)
+        if !isempty(changes)
+            fmt = Dict()
+            for (id, c) in changes
+                (haskey(c, :set) || haskey(c, :metadata)) && (c = Dict(c...))
+                fmt[json(connection, id)] = c
+                if haskey(c, :set)
+                    c[:set] = json(config, connection, config[id].value)
+                end
+                if haskey(c, :metadata)
+                    @debug("ADDING METADATA $(config[id].metadata)")
+                    c[:metadata] = Dict(m => config[id].metadata[m] for m in c[:metadata])
+                end
+            end
+            output(connection.ws, update = fmt)
+        end
+    end
+    config.changes = Dict()
 end
 
 function serve(config::Config, ws)
     (; namespace, secret) = input(ws)
     if haskey(config.namespaces, namespace)
         if config.namespaces[namespace].secret !== secret
-            println("Bad attempt to connect for $(namespace)")
+            @debug("Bad attempt to connect for $(namespace)")
             output(ws, error = "Wrong secret for $(namespace)")
             return
         end
@@ -132,7 +163,7 @@ function serve(config::Config, ws)
         config.namespaces[namespace] = Namespace(; name=namespace, secret)
     end
     config.connections[ws] = Connection(; ws, namespace)
-    println("Connection for $(namespace)")
+    @debug("Connection for $(namespace)")
     while !eof(ws)
         string="unknown"
         try
@@ -141,6 +172,7 @@ function serve(config::Config, ws)
             isempty(string) && continue
             cmd = JSON3.read(string, Vector)
             command(JusCmd(config, ws, namespace, cmd))
+            observe(config)
         catch err
             if !isa(err, Base.IOError) && !isa(err, HTTP.WebSockets.WebSocketError)
                 !isa(err, ArgumentError) && println(err)
@@ -152,7 +184,7 @@ function serve(config::Config, ws)
     close(ws)
     put!(config.connections[ws].stop, true)
     delete!(config.connections, ws)
-    println("CLIENT CLOSED:", namespace)
+    @debug("CLIENT CLOSED: $(repr(namespace))")
 end
 
 function server(config::Config)
@@ -160,5 +192,5 @@ function server(config::Config)
     HTTP.WebSockets.listen(config.host, config.port) do ws
         config.serverfunc(config, ws)
     end
-    println("HTTP SERVER FINISHED")
+    @debug("HTTP SERVER FINISHED")
 end

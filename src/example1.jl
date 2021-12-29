@@ -14,23 +14,31 @@ end
     addressfield = ""
 end
 
-function handle(app::PersonApp, cmd::VarCommand{:create})
+function Jus.handle(app::PersonApp, cmd::VarCommand{:create})
     println("@@@ EXAMPLE PERSON APP CREATED")
     ## initialize app here
 end
 
-function handle(app::PersonApp, cmd::VarCommand{:set, (:namefield,)})
+function Jus.handle(app::PersonApp, cmd::VarCommand{:set, (:path, :namefield,)})
+    println("PERSON APP HANDLE: ", cmd)
+    p = Jus.parent(cmd)
+    println("PERSON APP cmd var = $(cmd.var)")
+    println("PERSON APP cmd parent = $(Jus.parent(cmd).var)")
     if haskey(app.people, app.namefield)
-        set_metadata(cmd, :new_person, :note, "There is already a person named $(app.namefield)")
+        set_metadata(p, :new_person, :note, "There is already a person named $(app.namefield)")
     elseif app.namefield == ""
-        set_metadata(cmd, :new_person, :note, "A new person needs a name")
+        set_metadata(p, :new_person, :note, "A new person needs a name")
     elseif app.addressfield == ""
-        set_metadata(cmd, :new_person, :note, "A new person needs an address")
+        set_metadata(p, :new_person, :note, "A new person needs an address")
     else
-        return PASS
+        return
     end
-    set_metadata(cmd, :new_person, :enabled, false)
-    FAIL
+    set_metadata(p, :new_person, :enabled, "false")
+    cmd.cancel = true
+end
+
+function Jus.handle_child(ancestor, var, app::PersonApp, cmd::VarCommand{:set, X}, path) where X
+    println("SETTING CHILD VARIABLE $(var.name), META = $(var.metadata)")
 end
 
 function new_person(app::PersonApp)

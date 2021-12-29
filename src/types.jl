@@ -4,6 +4,7 @@ import Base.@kwdef, Base.WeakRef
 import JSON3.StructTypes
 
 export Config, State, UnknownVariable, ID, Var, JusCmd, ROOT, EMPTYID, Namespace, Connection, VarCommand
+export parent, cancel, arg
 export PASS, FAIL, SUBSTITUTE
 
 const PASS = :pass
@@ -36,7 +37,7 @@ A variable:
     name: the variable's human-readable name, used in UIs and diagnostics
 """
 @kwdef mutable struct Var
-    parent::ID
+    parent::ID = EMPTYID
     id::ID = ROOT # root is just the default value and will most likely be changed
     name::Union{Symbol, Integer} = ""
     value = nothing
@@ -44,6 +45,7 @@ A variable:
     namedchildren::Dict{Symbol, Var} = Dict()
     indexedchildren::Vector{Var} = []
     properties::Dict{Symbol, Any} = Dict() # misc properties of any type
+    active = true # controls refreshing
 end
 
 @kwdef mutable struct Namespace
@@ -53,14 +55,11 @@ end
 end
 
 @kwdef mutable struct Connection
-    ws::HTTP.WebSockets.WebSocket
+    ws #::HTTP.WebSockets.WebSocket
     namespace::String
     observing::Set{ID} = Set()
     stop::Channel = Channel(1)
     apps::Dict = Dict()
-    sets::Set{ID} = Set()
-    deletes::Set{ID} = Set()
-    metadata_sets::Set{Tuple{ID, Symbol}} = Set()
     oid2data::Dict{Int, WeakRef} = Dict()
     data2oid::WeakKeyDict{Any, Int} = WeakKeyDict()
     nextOid::Int = 0
@@ -92,13 +91,13 @@ Singleton for this program's state.
     namespaces::Dict{String, Namespace} = Dict() # namespaces and their secrets
     secret::String = ""
     serverfunc = (cfg, ws)-> nothing
-    connections::Dict{HTTP.WebSockets.WebSocket, Connection} = Dict()
-    changes::Dict{Var, Set} = Dict()
+    connections::Dict{Any, Connection} = Dict()
+    changes::Dict{ID, Dict} = Dict()
 end
 
 @kwdef struct JusCmd{NAME}
     config::Config
-    ws::HTTP.WebSockets.WebSocket
+    ws #::HTTP.WebSockets.WebSocket
     namespace::AbstractString
     args::Vector
     cancel::Bool = false
@@ -123,7 +122,7 @@ Set: set a variable
 Get: retrieve a value for a variable
 Observe: observe variables
 """
-@kwdef struct VarCommand{Cmd, Arg}
+@kwdef mutable struct VarCommand{Cmd, Arg}
     var::Var
     config::Config
     connection::Connection
@@ -131,12 +130,17 @@ Observe: observe variables
     creating::Bool = false
     arg = nothing
     data = nothing
+    result = nothing # used for :get
 end
 
 function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}; args...)
     VarCommand{cmd, path}(; args...)
 end
 function VarCommand(cmd::VarCommand{Cmd, Arg}; args...) where {Cmd, Arg}
+    #VarCommand{Cmd, Arg}(; cmd.var, cmd.config, cmd.connection, cmd.cancel, cmd.creating, cmd.arg, cmd.data, args...)
+    VarCommand{Cmd, Arg}(cmd; args...)
+end
+function VarCommand{Cmd, Arg}(cmd::VarCommand; args...) where {Cmd, Arg}
     VarCommand{Cmd, Arg}(; cmd.var, cmd.config, cmd.connection, cmd.cancel, cmd.creating, cmd.arg, cmd.data, args...)
 end
 function VarCommand(jcmd::JusCmd, cmd::Symbol, path::Tuple{Vararg{Symbol}}, var; args...)
@@ -145,5 +149,9 @@ end
 
 cancel(cmd::VarCommand) = VarCommand(cmd; cancel = true)
 arg(cmd::VarCommand, arg) = VarCommand(cmd; arg)
+function parent(cmd::VarCommand)
+    cmd.var.parent == EMPTYID && throw("No parent for variable $(cmd.var.id)")
+    VarCommand(cmd; var = cmd.config[cmd.var.parent])
+end
 
 Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}()")

@@ -1,0 +1,9 @@
+#!/bin/sh
+DIR=$(dirname $(realpath "$0"))
+#export JULIA_DEBUG=Main
+if [ -e "$DIR/jus.so" ]; then
+    echo SYSIMAGE: "$DIR/jus.so"
+    exec julia -J "$DIR/jus.so" "--project=$DIR" "$DIR/test/test.jl"
+else
+    exec julia "--project=$DIR" "$DIR/test/test.jl"
+fi

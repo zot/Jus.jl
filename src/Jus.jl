@@ -2,7 +2,7 @@ using Match
 
 import Base.Iterators.flatten
 
-export exec, serve
+export exec, serve, input, output
 
 verbose = false
 
@@ -91,24 +91,24 @@ output(ws; args...) = output(ws, args)
 function output(ws, data)
     write(ws, JSON3.write(data))
     flush(ws)
-    println("WROTE: ", JSON3.write(data))
+    @debug("WROTE: $(JSON3.write(data))")
 end
 
 input(ws) = JSON3.read(readavailable(ws))
 
 function client(config::Config)
     if config.secret === "" abort("Secret required") end
-    println("CLIENT $(config.namespace) connecting to ws//$(config.host):$(config.port)")
+    @debug("CLIENT $(config.namespace) connecting to ws//$(config.host):$(config.port)")
     HTTP.WebSockets.open("ws://$(config.host):$(config.port)") do ws
         output(ws, (namespace = config.namespace, secret = config.secret))
         output(ws, config.args)
         result = JSON3.read(readavailable(ws)) # read one message
-        println("RESULT: $(result)")
+        @debug("RESULT: $(result)")
         if config.args[1] == "observe"
-            println("READING UPDATES")
+            @debug("READING UPDATES")
             while true
                 result = JSON3.read(readavailable(ws))
-                println("RESULT: $(result)")
+                @debug("RESULT: $(result)")
             end
         end
     end
@@ -134,7 +134,7 @@ function exec(serverfunc, args::Vector{String}; config = Config())
                 config.server = true
             end
             unknown => begin
-                println("MATCHED DEFAULT: $(args[i:end])")
+                @debug("MATCHED DEFAULT: $(args[i:end])")
                 push!(config.args, args[i:end]...)
                 i = length(args)
                 break
@@ -147,12 +147,38 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     config
 end
 
+set_var(cmd::VarCommand, value) = set_var(cmd, cmd.var, value)
+set_var(cmd::VarCommand, name::Symbol, value) = set_var(cmd, cmd.var[name], value)
+function set_var(cmd::VarCommand, var::Var, value)
+    var.value = value
+    get!(()-> Dict(), cmd.config.changes, var.id)[:set] = true
+end
+
+delete_var(cmd::VarCommand) = delete_var(cmd, cmd.var)
+delete_var(cmd::VarCommand, name::Symbol) = delete_var(cmd, cmd.var[name])
+function delete_var(cmd::VarCommand, var::Var)
+    if var.parent != EMPTYID
+        parent = cmd.config[var.parent]
+        if var.name != Symbol("")
+            delete!(parent.namedchildren, var.name)
+        else
+            parent.indexedchildren = filter(c-> c !== var, parent.indexedchildren)
+        end
+        delete!(cmd.config.vars, var.id)
+    end
+    changes = get!(()-> Dict(), cmd.config.changes, var.id)
+    delete!(changes, :set)
+    delete!(changes, :metadata)
+    changes[:delete] = true
+end
+
 set_metadata(cmd::VarCommand, name::Symbol, value) = set_metadata(cmd, cmd.var, name, value)
 set_metadata(cmd::VarCommand, varname::Symbol, name::Symbol, value) =
     set_metadata(cmd, cmd.var[varname], name, value)
-function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value)
+function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value::AbstractString)
     var.metadata[name] = value
-    push!(app.connection.metadata_sets, (var.id, name))
+    metasets = get!(()-> Set(), get!(()-> Dict(), cmd.config.changes, var.id), :metadata)
+    push!(metasets, name)
 end
 
 """
@@ -165,8 +191,9 @@ function route(value, cmd::VarCommand)
     path = []
     cur = cmd.var.id
     while cur !== EMPTYID
-        push!(path, cmd.config[cur])
-        cur = cmd.var.parent
+        var = cmd.config[cur]
+        push!(path, var)
+        cur = var.parent
     end
     route(value, cmd, reverse(path))
 end
@@ -189,6 +216,7 @@ end
     handle_child(var, value, cmd, path)
 
 Allows ancestor variables to alter or cancel commands.
+`handle_child` can replace the given VarCommand by return a different one
 See handle() for details on commands.
 """
 handle_child(ancestor, var, value, cmd, path) = cmd
@@ -213,20 +241,20 @@ COMMANDS
   :observe  A connection is starting to observe this variable
 """
 function handle(value, cmd)
-    println("@@@ DEFAULT COMMAND HANDLER: $(cmd)")
+    @debug("@@@ DEFAULT COMMAND HANDLER: $(value), $(cmd)")
 end
 
 function handle(value, cmd::VarCommand{:metadata, (:create,)})
     if cmd.creating
         cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
-        println("@@@ CREATED: ", cmd.var.value)
+        @debug("@@@ CREATED: $(repr(cmd.var.value))")
         VarCommand(cmd, arg = cmd.var.value)
     end
 end
 
 function handle(value, cmd::VarCommand{:metadata, (:path,)})
-    println("@@@ PATH METADATA: ", cmd)
-    cmd.var.properties[:path] = split(cmd.var.metadata[:path])
+    @debug("@@@ PATH METADATA: $(repr(cmd))")
+    cmd.var.properties[:path] = map(Symbol, split(cmd.var.metadata[:path]))
 end
 
 writeable(var::Var) =
@@ -235,7 +263,7 @@ writeable(var::Var) =
     var.properties[:access] === :rw
 
 function handle(value, cmd::VarCommand{:set, ()})
-    println("@@@ BASIC SET: ", cmd)
+    @debug("@@@ BASIC SET: $(repr(cmd))")
     if haskey(cmd.var.properties, :path) && writeable(cmd.var)
         handle(value, VarCommand{:set, (:path, cmd.var.properties[:path]...)}(cmd))
     else
@@ -254,7 +282,7 @@ readable(var::Var) =
 called during refreshes
 """
 function handle(value, cmd::VarCommand{:get, ()})
-    println("@@@ BASIC GET: ", cmd)
+    @debug("@@@ BASIC GET: $(repr(cmd))")
     if cmd.var.parent !== EMPTYID && haskey(cmd.var.properties, :path) && readable(cmd.var)
         handle(value, VarCommand{:get, (:path, cmd.var.properties[:path]...)}(cmd))
     end
