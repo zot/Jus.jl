@@ -19,7 +19,8 @@ function Jus.handle(app::PersonApp, cmd::VarCommand{:create})
     ## initialize app here
 end
 
-function Jus.handle(app::PersonApp, cmd::VarCommand{:set, (:path, :namefield,)})
+namefield(app::PersonApp) = app.namefield
+function namefield(cmd::VarCommand, app::PersonApp, value)
     println("PERSON APP HANDLE: ", cmd)
     p = Jus.parent(cmd)
     println("PERSON APP cmd var = $(cmd.var)")

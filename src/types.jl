@@ -26,6 +26,8 @@ StructTypes.StructType(::Type{State}) = StructTypes.Mutable()
     number::UInt = 0
 end
 
+Base.show(io::IO, id::ID) = print(io, "$(id.namespace)/$(id.number)")
+
 const ROOT = ID("ROOT", UInt(0))
 const EMPTYID = ID("", UInt(0))
 
@@ -46,6 +48,11 @@ A variable:
     indexedchildren::Vector{Var} = []
     properties::Dict{Symbol, Any} = Dict() # misc properties of any type
     active = true # controls refreshing
+    internal_value = nothing
+    readable::Bool = true
+    writeable::Bool = true
+    call::Bool = false
+    path::Vector{Union{Symbol, Function}} = []
 end
 
 @kwdef mutable struct Namespace
@@ -92,7 +99,7 @@ Singleton for this program's state.
     secret::String = ""
     serverfunc = (cfg, ws)-> nothing
     connections::Dict{Any, Connection} = Dict()
-    changes::Dict{ID, Dict} = Dict()
+    changes::Dict{ID, Dict{Symbol, Any}} = Dict()
 end
 
 @kwdef struct JusCmd{NAME}
@@ -130,7 +137,7 @@ Observe: observe variables
     creating::Bool = false
     arg = nothing
     data = nothing
-    result = nothing # used for :get
+    path = ()
 end
 
 function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}; args...)
@@ -148,10 +155,41 @@ function VarCommand(jcmd::JusCmd, cmd::Symbol, path::Tuple{Vararg{Symbol}}, var;
 end
 
 cancel(cmd::VarCommand) = VarCommand(cmd; cancel = true)
+
 arg(cmd::VarCommand, arg) = VarCommand(cmd; arg)
-function parent(cmd::VarCommand)
+
+function parent_var(cmd::VarCommand)
     cmd.var.parent == EMPTYID && throw("No parent for variable $(cmd.var.id)")
-    VarCommand(cmd; var = cmd.config[cmd.var.parent])
+    cmd.config[cmd.var.parent]
+end
+
+function parent(cmd::VarCommand)
+    VarCommand(cmd; var = parent_var(cmd))
 end
 
 Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}()")
+
+struct NoCause <: Exception end
+
+"""
+    CmdException
+
+Error while executing a command
+
+- type: Symbol for the type of exception:
+  - path: error using a path
+  - not_writeable: variable is not writeable
+  - not_readable: variable is not readable
+  - refresh: error while refreshing
+  - program: error in program
+- cmd: the command that caused the problem
+- msg: description of the problem
+- cause: cause of the problem (if any)
+"""
+struct CmdException <: Exception
+    type::Symbol
+    cmd::VarCommand
+    msg::AbstractString
+    cause::Exception
+    CmdException(type, cmd, msg, cause = NoCause()) = new(type, cmd, msg, cause)
+end

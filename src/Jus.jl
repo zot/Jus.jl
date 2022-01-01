@@ -2,7 +2,7 @@ using Match
 
 import Base.Iterators.flatten
 
-export exec, serve, input, output
+export exec, serve, input, output, set_metadata
 
 verbose = false
 
@@ -190,28 +190,34 @@ Returns the command.
 See handle() for details on commands.
 """
 function route(parent_value, cmd::VarCommand)
-    path = []
-    cur = cmd.var.id
+    path = cmd.path = []
+    cur = cmd.var.parent
     while cur !== EMPTYID
         var = cmd.config[cur]
         push!(path, var)
         cur = var.parent
     end
-    route(parent_value, cmd, reverse(path))
+    handle_route(parent_value, cmd)
 end
 
-function route(parent_value, cmd::VarCommand, path)
+# implemented recursively so developers can overrride it
+# using the parent_value's type
+function handle_route(parent_value, cmd::VarCommand)
     cmd.cancel && return cmd
-    if length(path) === 1
+    println("@@@ HANDLE ROUTE $(parent_value), $(cmd)")
+    if isempty(cmd.path)
+        println("@@@ FINAL HANDLE $(parent_value), $(cmd)")
         override(cmd, handle(parent_value, cmd))
     else
-        cmd = override(cmd, handle_child(path[1], path[1].value, path[end], parent_value, cmd, path))
-        cmd = override(cmd, route(parent_value, cmd, @view path[2:end]))
-        override(cmd, finish_handle_child(path[1], path[1].value, path[end], parent_value, cmd, path))
+        var = cmd.path[1]
+        cmd.path = @view cmd.path[2:end]
+        cmd = override(cmd, handle_child(var, var.value, parent_value, cmd))
+        cmd = override(cmd, handle_route(parent_value, cmd))
+        override(cmd, finish_handle_child(var, var.value, parent_value, cmd))
     end
 end
 
-override(cmd::VarCommand, result) = isa(result, VarCommand) ? result : cmd
+override(cmd::VarCommand, result) = result isa VarCommand ? result : cmd
 
 """
     handle_child(var, value, cmd, path)
@@ -220,7 +226,7 @@ Allows ancestor variables to alter or cancel commands.
 `handle_child` can replace the given VarCommand by return a different one
 See handle() for details on commands.
 """
-handle_child(ancestor_var, ancestor, var, value, cmd, path) = nothing
+handle_child(ancestor_var, ancestor, value, cmd) = nothing
 
 """
     finish_handle_child(var, value, cmd, path)
@@ -228,7 +234,7 @@ handle_child(ancestor_var, ancestor, var, value, cmd, path) = nothing
 Allows ancestor variables to alter or cancel commands after they have been processed.
 See handle() for details on commands.
 """
-finish_handle_child(ancestor_var, ancestor, var, value, cmd, path) = nothing
+finish_handle_child(ancestor_var, ancestor, value, cmd) = nothing
 
 """
     handle(value, var::VarCommand{Command, Arg})
@@ -249,9 +255,12 @@ COMMANDS
 
   :observe  A connection is starting to observe this variable
 """
-function handle(value, cmd)
-    @debug("@@@ DEFAULT COMMAND HANDLER: $(value), $(cmd)")
-end
+handle(value, cmd::VarCommand{:create}) = default_handle(value, cmd)
+handle(value, cmd::VarCommand{:metadata}) = default_handle(value, cmd)
+handle(value, cmd::VarCommand{:get}) = default_handle(value, cmd)
+handle(value, cmd::VarCommand{:observe}) = default_handle(value, cmd)
+
+default_handle(value, cmd) = @debug("@@@ DEFAULT COMMAND HANDLER: $(value), $(cmd)")
 
 function handle(value, cmd::VarCommand{:metadata, (:create,)})
     if cmd.creating
@@ -263,27 +272,25 @@ end
 
 function handle(value, cmd::VarCommand{:metadata, (:path,)})
     @debug("@@@ PATH METADATA: $(repr(cmd))")
-    cmd.var.properties[:path] = map(Symbol, split(cmd.var.metadata[:path]))
+    set_path_from_metadata(cmd.var)
 end
 
-writeable(var::Var) =
-    !haskey(var.properties, :access) ||
-    var.properties[:access] === :w ||
-    var.properties[:access] === :rw
+function handle(value, cmd::VarCommand{:metadata, (:access,)})
+    @debug("@@@ ACCESS METADATA: $(repr(cmd))")
+    set_access_from_metadata(cmd.var)
+end
 
 function handle(value, cmd::VarCommand{:set, ()})
-    @debug("@@@ BASIC SET: $(repr(cmd))")
-    if haskey(cmd.var.properties, :path) && writeable(cmd.var)
-        handle(value, VarCommand{:set, (:path, cmd.var.properties[:path]...)}(cmd))
+    println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
+    println("@@@@@@ VAR: $(cmd.var)")
+    get!(()-> Dict(), cmd.config.changes, cmd.var.id)[:set] = true
+    if !isempty(cmd.var.path)
+        println("@@@@@@@@ SET PATH: $(cmd.var.path)")
+        set_path(cmd, value)
     else
         cmd.var.value = cmd.arg
     end
 end
-
-readable(var::Var) =
-    !haskey(var.properties, :access) ||
-    var.properties[:access] === :r ||
-    var.properties[:access] === :rw
 
 """
     handle(...{:get})
@@ -291,8 +298,8 @@ readable(var::Var) =
 called during refreshes
 """
 function handle(value, cmd::VarCommand{:get, ()})
-    @debug("@@@ BASIC GET: $(repr(cmd))")
-    if cmd.var.parent !== EMPTYID && haskey(cmd.var.properties, :path) && readable(cmd.var)
-        handle(value, VarCommand{:get, (:path, cmd.var.properties[:path]...)}(cmd))
+    println("@@@ BASIC GET $(cmd.var.id): $(repr(cmd))")
+    if !isempty(cmd.var.path)
+        handle(value, VarCommand{:get, (:path, cmd.var.path...)}(cmd))
     end
 end
