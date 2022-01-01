@@ -22,7 +22,8 @@ a leading =.= will be stripped if a value is given
 - a function in the last position
   - =nothing= will be returned if it does not take one argument or does not have read access
   - setting will have no effect if it does not take two arguments or does not have write access
-** access=r|w|rw -- metadata that determines accessibility for the path
+** access = action | r | w | rw -- metadata that determines accessibility for the path
+action means write-only, path must be a function, and no value will be sent to the function
 * Security
 ** sensitive metadata
 The server can scrape and create template variables to prevent paths from leaking over connections

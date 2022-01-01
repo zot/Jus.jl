@@ -162,20 +162,27 @@ end
 
 function refresh(cmd::JusCmd)
     for (_, v) in cmd.config.vars
-        v.parent == EMPTYID && refresh(cmd, v)
+        refresh(cmd, v)
     end
+    
 end
 
 function refresh(cmd::JusCmd, var::Var)
-    parent = var.parent == EMPTYID ? nothing : cmd.config[var.parent].internal_value
-    vcmd = VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd))
-    route(parent, vcmd)
-    refresh_all(cmd, values(var.namedchildren))
-    refresh_all(cmd, values(var.indexedchildren))
-end
-
-refresh_all(cmd::JusCmd, vars) = for var in vars
-    refresh(cmd, var)
+    if has_path(var)
+        parent = parent_value(cmd.config, var)
+        if parent !== nothing
+            old = var.value
+            vcmd = VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd))
+            route(parent, vcmd)
+            old !== var.value && changed(cmd.config, var)
+        end
+    end
+    for (_, v) in var.namedchildren
+        refresh(cmd, v)
+    end
+    for v in var.indexedchildren
+        refresh(cmd, v)
+    end
 end
 
 function serve(config::Config, ws)

@@ -97,6 +97,10 @@ function parsemetadata(meta::AbstractString, original_meta = nothing)
     metadata
 end
 
+function initial_route_meta(cmd::JusCmd, prop::Symbol, var::Var)
+    route(var.value, VarCommand(cmd, :metadata, (prop,), var, creating = true))
+end
+
 function Var(cmd::JusCmd; id::ID, name = Symbol(""), args...)
     args = (;args...)
     if name isa Union{Symbol, AbstractString} && string(name) != ""
@@ -117,14 +121,12 @@ function Var(cmd::JusCmd; id::ID, name = Symbol(""), args...)
     v.parent !== EMPTYID && name != Symbol("") && (cmd.config[v.parent][name] = v)
     v.parent !== EMPTYID && name != Symbol("") && @debug("ADDED CHILD OF $(v.parent) NAMED $(name) = $(cmd.config[v.parent][name])")
     !isempty(v.metadata) && @debug("VAR $(v.name) metadata: $(v.metadata)")
+    haskey(v.metadata, :create) && initial_route_meta(cmd, :create, v)
+    haskey(v.metadata, :access) && initial_route_meta(cmd, :access, v)
+    haskey(v.metadata, :path) && initial_route_meta(cmd, :path, v)
     for (mk, _) in v.metadata
-        vcmd = VarCommand(cmd, :metadata, (mk,), v, creating = true)
-        if hasmethod(handle, typeof.((v.value, vcmd)))
-            println("CALLING META HANDLER FOR $(vcmd)")
-            route(v.value, vcmd)
-        else
-            println("NO META HANDLER FOR $(vcmd)")
-        end
+        mk in (:access, :path, :create) && continue
+        route_meta(cmd, mk, v)
     end
     route(v.value, VarCommand(cmd, :create, (), v, creating = true))
     v
@@ -133,17 +135,21 @@ end
 function addvar(cmd::JusCmd, parent::ID, name::Union{Integer, Symbol}, id::ID, value, metadata::Dict{Symbol, AbstractString})
     realname = name == Symbol("") && parent != EMPTYID ? length(cmd.config[parent]) + 1 : name
     v = Var(cmd; id, name = realname, value, metadata, parent)
-    cmd.config.changes[v.id] = Dict(:set => true)
+    changed(cmd.config, v)
     println("@@@@@@ VAR $(v.id) METADATA: $(v.metadata)")
-    if !isempty(v.metadata)
-        cmd.config.changes[v.id][:metadata] = Set(keys(v.metadata))
-    end
+    !isempty(v.metadata) && changed(cmd.config, v, keys(v.metadata)...)
     println("@@@@@@ VAR $(v.id) CHANGES: $(cmd.config.changes[v.id])")
     v
 end
 
+function create_from_metadata(var::Var)
+    cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
+    @debug("@@@ CREATED: $(repr(cmd.var.value))")
+    VarCommand(cmd, arg = cmd.var.value)
+end
+
 function set_access_from_metadata(var::Var)
-    var.call = var.metadata[:access] === "call"
+    var.call = var.metadata[:access] === "action"
     var.readable = var.metadata[:access] in ["rw", "r"]
     var.writeable = var.metadata[:access] in ["rw", "w"]
 end
@@ -197,7 +203,7 @@ function basic_get_path(cmd::VarCommand, path)
     cur
 end
 
-function set_path(cmd::VarCommand, value)
+function set_path(cmd::VarCommand)
     cmd.creating && return
     println("@@@\n@@@ SETTING PATH")
     !cmd.var.writeable && throw(CmdException(:writeable_error, cmd, "variable $(cmd.var.id) is not writeable"))
@@ -205,28 +211,29 @@ function set_path(cmd::VarCommand, value)
     el = cmd.var.path[end]
     if el isa Symbol
         try
-            cur = setfield!(cur, el, value)
+            cur = setfield!(cur, el, cmd.arg)
         catch err
             throw(CmdException(:path, cmd, "error setting $(cmd.var.id) field $(el)", err))
         end
-    elseif hasmethod(el, typeof.((cmd, cur, value)))
+    elseif hasmethod(el, typeof.((cmd, cur, cmd.arg)))
         try
-            cur = el(cmd, cur, value)
+            println("@@@@@@@@ CALLING $(el) ON $(cur) WITH '$(cmd.arg)'")
+            cur = el(cmd, cur, cmd.arg)
         catch err
-            throw(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el)", err))
+            rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el): $(err)", err))
         end
-    elseif hasmethod(el, typeof.((cur, value)))
+    elseif hasmethod(el, typeof.((cur, cmd.arg)))
         try
-            cur = el(cur, value)
+            cur = el(cur, cmd.arg)
         catch err
-            throw(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el)", err))
+            rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el): $(err)", err))
         end
     else
-        throw(CmdException(:path, cmd, "no $(cmd.var.id) setter function $(el) for $(typeof.((cur, value)))"))
+        throw(CmdException(:path, cmd, "no $(cmd.var.id) setter function $(el) for $(typeof.((cur, cmd.arg)))"))
     end
 end
 
 function get_path(cmd::VarCommand)
     !cmd.var.writeable && throw(CmdException(:readable_error, cmd, "variable $(cmd.var.id) is not readable"))
-    basic_get_path(cmd, cmd.var.path)
+    value = basic_get_path(cmd, cmd.var.path)
 end

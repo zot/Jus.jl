@@ -147,11 +147,16 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     config
 end
 
+changed(cfg::Config, var::Var) = get!(()-> Dict(), cfg.changes, var.id)[:set] = true
+function changed(cfg::Config, var::Var, metaproperties...)
+    push!(get!(()-> Set(), get!(()-> Dict(), cfg.changes, var.id), :metadata), metaproperties...)
+end
+
 set_var(cmd::VarCommand, value) = set_var(cmd, cmd.var, value)
 set_var(cmd::VarCommand, name::Symbol, value) = set_var(cmd, cmd.var[name], value)
 function set_var(cmd::VarCommand, var::Var, value)
     var.value = value
-    get!(()-> Dict(), cmd.config.changes, var.id)[:set] = true
+    changed(cmd.config, var)
 end
 
 delete_var(cmd::VarCommand) = delete_var(cmd, cmd.var)
@@ -177,8 +182,7 @@ set_metadata(cmd::VarCommand, varname::Symbol, name::Symbol, value) =
     set_metadata(cmd, cmd.var[varname], name, value)
 function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value::AbstractString)
     var.metadata[name] = value
-    metasets = get!(()-> Set(), get!(()-> Dict(), cmd.config.changes, var.id), :metadata)
-    push!(metasets, name)
+    changed(cmd.config, var, name)
 end
 
 """
@@ -237,32 +241,25 @@ See handle() for details on commands.
 finish_handle_child(ancestor_var, ancestor, value, cmd) = nothing
 
 """
-    handle(value, var::VarCommand{Command, Arg})
+    handle(value, cmd::VarCommand{Command, Arg})
 
-Handle a variable command.
+Base-level command routing. Developers can specialize on value and cmd.
 
 COMMANDS
 
-  :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name
-            sent before the :create command
+  :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name.
+            initially sent before :set and :create
 
-  :create   The variable has just been created
+  :set      Change the value of a variable. Initially called before :create.
+
+  :create   The variable has just been created (called after :metadata and :set)
 
   :get      Determine the new value for a variable. By default, variables retain their values
             but handlers can change this behavior.
-
-  :set      Change the value of a variable
-
-  :observe  A connection is starting to observe this variable
 """
-handle(value, cmd::VarCommand{:create}) = default_handle(value, cmd)
-handle(value, cmd::VarCommand{:metadata}) = default_handle(value, cmd)
-handle(value, cmd::VarCommand{:get}) = default_handle(value, cmd)
-handle(value, cmd::VarCommand{:observe}) = default_handle(value, cmd)
+handle(value, cmd::VarCommand) = default_handle(value, cmd)
 
-default_handle(value, cmd) = @debug("@@@ DEFAULT COMMAND HANDLER: $(value), $(cmd)")
-
-function handle(value, cmd::VarCommand{:metadata, (:create,)})
+function default_handle(value, cmd::VarCommand{:metadata, (:create,)})
     if cmd.creating
         cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
         @debug("@@@ CREATED: $(repr(cmd.var.value))")
@@ -270,36 +267,33 @@ function handle(value, cmd::VarCommand{:metadata, (:create,)})
     end
 end
 
-function handle(value, cmd::VarCommand{:metadata, (:path,)})
+function default_handle(value, cmd::VarCommand{:metadata, (:path,)})
     @debug("@@@ PATH METADATA: $(repr(cmd))")
     set_path_from_metadata(cmd.var)
 end
 
-function handle(value, cmd::VarCommand{:metadata, (:access,)})
+function default_handle(value, cmd::VarCommand{:metadata, (:access,)})
     @debug("@@@ ACCESS METADATA: $(repr(cmd))")
     set_access_from_metadata(cmd.var)
 end
 
-function handle(value, cmd::VarCommand{:set, ()})
+function default_handle(value, cmd::VarCommand{:set})
     println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
     println("@@@@@@ VAR: $(cmd.var)")
-    get!(()-> Dict(), cmd.config.changes, cmd.var.id)[:set] = true
+    changed(cmd.config, cmd.var)
     if !isempty(cmd.var.path)
         println("@@@@@@@@ SET PATH: $(cmd.var.path)")
-        set_path(cmd, value)
+        set_path(cmd)
     else
         cmd.var.value = cmd.arg
     end
 end
 
-"""
-    handle(...{:get})
-
-called during refreshes
-"""
-function handle(value, cmd::VarCommand{:get, ()})
+function default_handle(value, cmd::VarCommand{:get})
     println("@@@ BASIC GET $(cmd.var.id): $(repr(cmd))")
-    if !isempty(cmd.var.path)
-        handle(value, VarCommand{:get, (:path, cmd.var.path...)}(cmd))
-    end
+    has_path(cmd.var) && get_path(cmd)
 end
+
+default_handle(value, cmd::VarCommand{:observe}) = nothing
+
+default_handle(value, cmd::VarCommand{:create}) = nothing

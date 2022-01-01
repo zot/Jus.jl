@@ -140,6 +140,10 @@ Observe: observe variables
     path = ()
 end
 
+has_path(var::Var) = var.parent != EMPTYID && !isempty(var.path)
+internal_value(var::Var) = has_path(var) ? var.internal_value : var.value
+parent_value(cfg::Config, var::Var) = var.parent == EMPTYID ? nothing : internal_value(cfg[var.parent])
+
 function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}; args...)
     VarCommand{cmd, path}(; args...)
 end
@@ -163,9 +167,7 @@ function parent_var(cmd::VarCommand)
     cmd.config[cmd.var.parent]
 end
 
-function parent(cmd::VarCommand)
-    VarCommand(cmd; var = parent_var(cmd))
-end
+parent(cmd::VarCommand) = VarCommand(cmd; var = parent_var(cmd))
 
 Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}()")
 

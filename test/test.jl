@@ -123,14 +123,14 @@ function test1()
     assert_type(var(1), PersonApp)
     output(ws, ["observe", "@/1"])
     expect(ws, update = Dict(Symbol("@/1") => (; set = (; ref = 1), metadata = (; create = "PersonApp"))))
-    output(ws, ["set", "-c", "@/1 new_person:path=new_person(),access=call", "true"])
+    output(ws, ["set", "-c", "@/1 new_person:path=new_person(),access=action", "true"])
     expect(ws, result = ["@/2"])
     expect(ws, update = Dict(Symbol("@/2") =>
         (;
          set = "true",
          metadata = (;
                      path = "new_person()",
-                     access = "call",
+                     access = "action",
                      ),
          )))
     output(ws, ["set", "-c", "@/1 namefield:path=namefield()", "true"])
