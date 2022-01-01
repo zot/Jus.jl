@@ -170,11 +170,12 @@ function test1()
     ))
     output(ws, ["set", "@/4", "1234 Elm St"])
     expect(ws, result = [])
-    println("APP: $(app)")
+    #println("APP: $(app)")
     expect(ws, update = Dict(
         Symbol("@/4") =>
             (;
-             set = "1234 Elm St",
+             #set = "1234 Elm St",
+             set = "true",
              ),
     ))
     output(ws, ["set", "@/3", "fred"])
@@ -182,7 +183,8 @@ function test1()
     expect(ws, update = Dict(
         Symbol("@/3") =>
             (;
-             set = "fred",
+             #set = "fred",
+             set = "true",
              ),
     ))
     close(ws)

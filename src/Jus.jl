@@ -208,9 +208,9 @@ end
 # using the parent_value's type
 function handle_route(parent_value, cmd::VarCommand)
     cmd.cancel && return cmd
-    println("@@@ HANDLE ROUTE $(parent_value), $(cmd)")
+    #println("@@@ HANDLE ROUTE $(parent_value), $(cmd)")
     if isempty(cmd.path)
-        println("@@@ FINAL HANDLE $(parent_value), $(cmd)")
+        #println("@@@ FINAL HANDLE $(parent_value), $(cmd)")
         override(cmd, handle(parent_value, cmd))
     else
         var = cmd.path[1]
@@ -278,11 +278,11 @@ function default_handle(value, cmd::VarCommand{:metadata, (:access,)})
 end
 
 function default_handle(value, cmd::VarCommand{:set})
-    println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
-    println("@@@@@@ VAR: $(cmd.var)")
+    #println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
+    #println("@@@@@@ VAR: $(cmd.var)")
     changed(cmd.config, cmd.var)
     if !isempty(cmd.var.path)
-        println("@@@@@@@@ SET PATH: $(cmd.var.path)")
+        #println("@@@@@@@@ SET PATH: $(cmd.var.path)")
         set_path(cmd)
     else
         cmd.var.value = cmd.arg
@@ -290,7 +290,7 @@ function default_handle(value, cmd::VarCommand{:set})
 end
 
 function default_handle(value, cmd::VarCommand{:get})
-    println("@@@ BASIC GET $(cmd.var.id): $(repr(cmd))")
+    #println("@@@ BASIC GET $(cmd.var.id): $(repr(cmd))")
     has_path(cmd.var) && get_path(cmd)
 end
 

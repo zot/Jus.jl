@@ -21,9 +21,9 @@ end
 
 namefield(app::PersonApp) = app.namefield
 function namefield(cmd::VarCommand, app::PersonApp, value)
-    println("PERSON APP HANDLE: ", cmd)
-    println("PERSON APP cmd var = $(cmd.var)")
-    println("PERSON APP cmd parent = $(Jus.parent(cmd).var)")
+    #println("PERSON APP HANDLE: ", cmd)
+    #println("PERSON APP cmd var = $(cmd.var)")
+    #println("PERSON APP cmd parent = $(Jus.parent(cmd).var)")
     p = Jus.parent(cmd)
     if haskey(app.people, app.namefield)
         set_metadata(p, :new_person, :note, "There is already a person named $(app.namefield)")
@@ -38,8 +38,8 @@ function namefield(cmd::VarCommand, app::PersonApp, value)
     cmd.cancel = true
 end
 
-function Jus.handle_child(ancestor, var, app::PersonApp, cmd::VarCommand{:set, X}, path) where X
-    println("SETTING CHILD VARIABLE $(var.name), META = $(var.metadata)")
+function Jus.handle_child(parent::Var, parent_value, app::PersonApp, cmd::VarCommand{:set})
+    println("SETTING CHILD $(parent_value).$(cmd.var.name), META = $(cmd.var.metadata)")
 end
 
 function new_person(app::PersonApp)

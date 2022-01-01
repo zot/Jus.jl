@@ -87,7 +87,7 @@ function parsemetadata(meta::AbstractString, original_meta = nothing)
     end
     while meta !== ""
         (m = match(METAPROP, meta)) === nothing && throw("Bad metaproperty format: $(meta)")
-        println("@@@@@@ METAPROP $(m[1]) = $(m[2])")
+        #println("@@@@@@ METAPROP $(m[1]) = $(m[2])")
         metadata[Symbol(m[1])] = m[2]
         length(meta) == length(m.match) && break
         meta[length(m.match)] != ',' && throw("Bad metaproperty format: $(meta)")
@@ -136,9 +136,9 @@ function addvar(cmd::JusCmd, parent::ID, name::Union{Integer, Symbol}, id::ID, v
     realname = name == Symbol("") && parent != EMPTYID ? length(cmd.config[parent]) + 1 : name
     v = Var(cmd; id, name = realname, value, metadata, parent)
     changed(cmd.config, v)
-    println("@@@@@@ VAR $(v.id) METADATA: $(v.metadata)")
+    #println("@@@@@@ VAR $(v.id) METADATA: $(v.metadata)")
     !isempty(v.metadata) && changed(cmd.config, v, keys(v.metadata)...)
-    println("@@@@@@ VAR $(v.id) CHANGES: $(cmd.config.changes[v.id])")
+    #println("@@@@@@ VAR $(v.id) CHANGES: $(cmd.config.changes[v.id])")
     v
 end
 
@@ -155,26 +155,26 @@ function set_access_from_metadata(var::Var)
 end
 
 function set_path_from_metadata(var::Var)
-    println("@@@@@@ SETTING PATH FROM METADATA $(var.metadata[:path])")
+    #println("@@@@@@ SETTING PATH FROM METADATA $(var.metadata[:path])")
     var.path = []
     path = var.path
     for el in split(var.metadata[:path])
         m = match(JPATH_COMPONENT, el)
         m === nothing && throw("Bad path component in $(var): $(el)")
-        println("@@@@@@ PATH COMPONENT: $(m[1]), $(m[2])")
+        #println("@@@@@@ PATH COMPONENT: $(m[1]), $(m[2])")
         if m[2] !== nothing
             push!(path, Main.eval(Meta.parse(m[1] * m[2])))
         else
             push!(path, Symbol(m[1]))
         end
-        println("@@@@@@ PATH COMPONENT VALUE: $(path[end])")
+        #println("@@@@@@ PATH COMPONENT VALUE: $(path[end])")
     end
-    println("@@@@@@ PATH: $(path)")
-    println("@@@@@@ VAR PATH: $(var.path)")
+    #println("@@@@@@ PATH: $(path)")
+    #println("@@@@@@ VAR PATH: $(var.path)")
 end
 
 function basic_get_path(cmd::VarCommand, path)
-    println("@@@\n@@@ GETTING PATH")
+    #println("@@@\n@@@ GETTING PATH")
     cmd.var.parent == EMPTYID && throw(CmdException(:path, cmd, "no parent"))
     cur = cmd.config[cmd.var.parent].value
     for el in path
@@ -205,7 +205,7 @@ end
 
 function set_path(cmd::VarCommand)
     cmd.creating && return
-    println("@@@\n@@@ SETTING PATH")
+    #println("@@@\n@@@ SETTING PATH")
     !cmd.var.writeable && throw(CmdException(:writeable_error, cmd, "variable $(cmd.var.id) is not writeable"))
     cur = basic_get_path(cmd, cmd.var.path[1:end - 1])
     el = cmd.var.path[end]
@@ -217,7 +217,7 @@ function set_path(cmd::VarCommand)
         end
     elseif hasmethod(el, typeof.((cmd, cur, cmd.arg)))
         try
-            println("@@@@@@@@ CALLING $(el) ON $(cur) WITH '$(cmd.arg)'")
+            #println("@@@@@@@@ CALLING $(el) ON $(cur) WITH '$(cmd.arg)'")
             cur = el(cmd, cur, cmd.arg)
         catch err
             rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el): $(err)", err))

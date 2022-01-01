@@ -140,7 +140,7 @@ function observe(config::Config)
         @debug("CHECKING CONNECTION OBSERVING: $(repr(connection.observing))")
         changes = filter(e-> within(config, e[1], connection.observing), config.changes)
         if !isempty(changes)
-            println("@@@@@@ CHANGES FOR UPDATING: $(changes)")
+            #println("@@@@@@ CHANGES FOR UPDATING: $(changes)")
             fmt = Dict()
             for (id, c) in changes
                 var = config[id]
@@ -148,12 +148,12 @@ function observe(config::Config)
                     c[:set] = json(config, connection, var.value)
                 end
                 if haskey(c, :metadata)
-                    println("ADDING METADATA $(var.metadata)")
+                    #println("ADDING METADATA $(var.metadata)")
                     c[:metadata] = Dict(m => var.metadata[m] for m in c[:metadata])
                 end
                 fmt[json(connection, id)] = Dict{Symbol, Any}(c...)
             end
-            println("@@@@@@@@ UPATE: $(fmt)")
+            #println("@@@@@@@@ UPATE: $(fmt)")
             output(connection.ws, update = fmt)
         end
     end
