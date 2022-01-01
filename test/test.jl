@@ -121,6 +121,7 @@ function test1()
     output(ws, ["set", "-c", "@/0:create=PersonApp", "true"])
     expect(ws, result = ["@/1"])
     assert_type(var(1), PersonApp)
+    app = var(1).value
     output(ws, ["observe", "@/1"])
     expect(ws, update = Dict(Symbol("@/1") => (; set = (; ref = 1), metadata = (; create = "PersonApp"))))
     output(ws, ["set", "-c", "@/1 new_person:path=new_person(),access=action", "true"])
@@ -157,6 +158,32 @@ function test1()
                   enabled = "false",
                   )
              )
+    ))
+    output(ws, ["set", "-c", "@/1 address:path=addressfield", "true"])
+    expect(ws, result = ["@/4"])
+    expect(ws, update = Dict(
+        Symbol("@/4") =>
+            (;
+             set = "true",
+             metadata = (; path = "addressfield"),
+             ),
+    ))
+    output(ws, ["set", "@/4", "1234 Elm St"])
+    expect(ws, result = [])
+    println("APP: $(app)")
+    expect(ws, update = Dict(
+        Symbol("@/4") =>
+            (;
+             set = "1234 Elm St",
+             ),
+    ))
+    output(ws, ["set", "@/3", "fred"])
+    expect(ws, result = [])
+    expect(ws, update = Dict(
+        Symbol("@/3") =>
+            (;
+             set = "fred",
+             ),
     ))
     close(ws)
     fetch(task)

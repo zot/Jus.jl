@@ -27,7 +27,7 @@ function namefield(cmd::VarCommand, app::PersonApp, value)
     p = Jus.parent(cmd)
     if haskey(app.people, app.namefield)
         set_metadata(p, :new_person, :note, "There is already a person named $(app.namefield)")
-    elseif app.namefield == ""
+    elseif value == ""
         set_metadata(p, :new_person, :note, "A new person needs a name")
     elseif app.addressfield == ""
         set_metadata(p, :new_person, :note, "A new person needs an address")
