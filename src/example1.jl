@@ -32,6 +32,7 @@ function namefield(cmd::VarCommand, app::PersonApp, value)
     elseif app.addressfield == ""
         set_metadata(p, :new_person, :note, "A new person needs an address")
     else
+        app.namefield = value
         return
     end
     set_metadata(p, :new_person, :enabled, "false")

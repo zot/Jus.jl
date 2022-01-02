@@ -243,7 +243,8 @@ finish_handle_child(ancestor_var, ancestor, value, cmd) = nothing
 """
     handle(value, cmd::VarCommand{Command, Arg})
 
-Base-level command routing. Developers can specialize on value and cmd.
+Base-level command routing.
+Developers can specialize on value and cmd.
 
 COMMANDS
 
@@ -260,11 +261,7 @@ COMMANDS
 handle(value, cmd::VarCommand) = default_handle(value, cmd)
 
 function default_handle(value, cmd::VarCommand{:metadata, (:create,)})
-    if cmd.creating
-        cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
-        @debug("@@@ CREATED: $(repr(cmd.var.value))")
-        VarCommand(cmd, arg = cmd.var.value)
-    end
+    cmd.creating && create_from_metadata(cmd)
 end
 
 function default_handle(value, cmd::VarCommand{:metadata, (:path,)})
@@ -290,10 +287,23 @@ function default_handle(value, cmd::VarCommand{:set})
 end
 
 function default_handle(value, cmd::VarCommand{:get})
-    #println("@@@ BASIC GET $(cmd.var.id): $(repr(cmd))")
-    has_path(cmd.var) && get_path(cmd)
+    if has_path(cmd.var)
+        get_path(cmd)
+        if haskey(cmd.var.metadata, :transformerId)
+            cur = cmd.var
+            while cur.parent != EMPTYID
+                cur = cmd.config[cur.parent]
+                if haskey(cmd.var.metadata, :transformer)
+                    cmd.var.value = transform(cur, cur.internal_value, cmd)
+                    break
+                end
+            end
+        end
+    end
 end
 
 default_handle(value, cmd::VarCommand{:observe}) = nothing
 
 default_handle(value, cmd::VarCommand{:create}) = nothing
+
+transform(parent_var::Var, parent, cmd::VarCommand) = cmd.var.internal_value

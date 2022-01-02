@@ -162,13 +162,12 @@ end
 
 function refresh(cmd::JusCmd)
     for (_, v) in cmd.config.vars
-        refresh(cmd, v)
+        v.parent == EMPTYID && refresh(cmd, v)
     end
-    
 end
 
 function refresh(cmd::JusCmd, var::Var)
-    if has_path(var)
+    if has_path(var) && var.readable
         parent = parent_value(cmd.config, var)
         if parent !== nothing
             old = var.value
@@ -205,8 +204,9 @@ function serve(config::Config, ws)
             string = readavailable(ws)
             isempty(string) && continue
             cmd = JSON3.read(string, Vector)
-            command(JusCmd(config, ws, namespace, cmd))
-            observe(config)
+            jcmd = JusCmd(config, ws, namespace, cmd)
+            command(jcmd)
+            finish_command(jcmd)
         catch err
             if !(err isa Base.IOError || err isa HTTP.WebSockets.WebSocketError)
                 err isa ArgumentError && println(err)

@@ -142,14 +142,14 @@ function addvar(cmd::JusCmd, parent::ID, name::Union{Integer, Symbol}, id::ID, v
     v
 end
 
-function create_from_metadata(var::Var)
+function create_from_metadata(cmd::VarCommand)
     cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
     @debug("@@@ CREATED: $(repr(cmd.var.value))")
     VarCommand(cmd, arg = cmd.var.value)
 end
 
 function set_access_from_metadata(var::Var)
-    var.call = var.metadata[:access] === "action"
+    var.action = var.metadata[:access] === "action"
     var.readable = var.metadata[:access] in ["rw", "r"]
     var.writeable = var.metadata[:access] in ["rw", "w"]
 end
@@ -235,5 +235,5 @@ end
 
 function get_path(cmd::VarCommand)
     !cmd.var.writeable && throw(CmdException(:readable_error, cmd, "variable $(cmd.var.id) is not readable"))
-    value = basic_get_path(cmd, cmd.var.path)
+    cmd.var.value = cmd.var.internal_value = basic_get_path(cmd, cmd.var.path)
 end

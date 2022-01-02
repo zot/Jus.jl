@@ -139,7 +139,7 @@ function test1()
     expect(ws, update = Dict(
         Symbol("@/3") =>
             (;
-             set = "true",
+             set = "",
              metadata = (; path = "namefield()"),
              ),
     ))
@@ -148,7 +148,7 @@ function test1()
     expect(ws, update = Dict(
         Symbol("@/3") =>
             (;
-             set = "true",
+             set = "",
              ),
         Symbol("@/2") =>
             (;
@@ -164,7 +164,7 @@ function test1()
     expect(ws, update = Dict(
         Symbol("@/4") =>
             (;
-             set = "true",
+             set = "",
              metadata = (; path = "addressfield"),
              ),
     ))
@@ -174,17 +174,16 @@ function test1()
     expect(ws, update = Dict(
         Symbol("@/4") =>
             (;
-             #set = "1234 Elm St",
-             set = "true",
+             set = "1234 Elm St",
              ),
     ))
     output(ws, ["set", "@/3", "fred"])
     expect(ws, result = [])
+    println("APP: $(app)")
     expect(ws, update = Dict(
         Symbol("@/3") =>
             (;
-             #set = "fred",
-             set = "true",
+             set = "fred",
              ),
     ))
     close(ws)

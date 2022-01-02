@@ -51,7 +51,7 @@ A variable:
     internal_value = nothing
     readable::Bool = true
     writeable::Bool = true
-    call::Bool = false
+    action::Bool = false
     path::Vector{Union{Symbol, Function}} = []
 end
 
