@@ -123,7 +123,15 @@ function test1()
     assert_type(var(1), PersonApp)
     app = var(1).value
     output(ws, ["observe", "@/1"])
-    expect(ws, update = Dict(Symbol("@/1") => (; set = (; ref = 1), metadata = (; create = "PersonApp"))))
+    expect(ws, update = Dict(Symbol("@/1") =>
+        (;
+         set = (; ref = 1),
+         metadata =
+             (;
+              create = "PersonApp",
+              type = "PersonApp",
+              )
+         )))
     output(ws, ["set", "-c", "@/1 new_person:path=new_person(),access=action", "true"])
     expect(ws, result = ["@/2"])
     expect(ws, update = Dict(Symbol("@/2") =>
@@ -140,7 +148,11 @@ function test1()
         Symbol("@/3") =>
             (;
              set = "",
-             metadata = (; path = "namefield()"),
+             metadata =
+                 (;
+                  path = "namefield()",
+                  type = "String",
+                  ),
              ),
     ))
     output(ws, ["set", "@/3", ""])
@@ -165,7 +177,11 @@ function test1()
         Symbol("@/4") =>
             (;
              set = "",
-             metadata = (; path = "addressfield"),
+             metadata =
+                 (;
+                  path = "addressfield",
+                  type = "String",
+                  ),
              ),
     ))
     output(ws, ["set", "@/4", "1234 Elm St"])

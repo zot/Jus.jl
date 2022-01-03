@@ -123,6 +123,7 @@ function command(cmd::JusCmd{:observe})
         var = cmd.config[id]
         route(var.value, VarCommand(cmd, :observe, (), var))
     end
+    output(cmd.ws, result = [])
     output(cmd.ws, update = Dict(json(cmd, vid) => (
         set = json(cmd, cmd.config[vid].value),
         metadata = cmd.config[vid].metadata
@@ -170,10 +171,9 @@ function refresh(cmd::JusCmd, var::Var)
     if has_path(var) && var.readable
         parent = parent_value(cmd.config, var)
         if parent !== nothing
-            old = var.value
-            vcmd = VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd))
-            route(parent, vcmd)
-            old !== var.value && changed(cmd.config, var)
+            old = var.json_value
+            route(parent, VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd)))
+            old !== var.json_value && changed(cmd.config, var)
         end
     end
     for (_, v) in var.namedchildren

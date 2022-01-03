@@ -53,6 +53,7 @@ A variable:
     writeable::Bool = true
     action::Bool = false
     path::Vector{Union{Symbol, Function}} = []
+    json_value = nothing
 end
 
 @kwdef mutable struct Namespace

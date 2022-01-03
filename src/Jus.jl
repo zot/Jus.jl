@@ -250,15 +250,21 @@ COMMANDS
 
   :metadata Set metadata for a variable. Arg will be a tuple with the metadata's name.
             initially sent before :set and :create
+            NOTE: value is the PARENT VARIABLE'S value
 
   :set      Change the value of a variable. Initially called before :create.
+            NOTE: value is the PARENT VARIABLE'S value
 
   :create   The variable has just been created (called after :metadata and :set)
+            NOTE: value is the VARIABLE'S value
 
   :get      Determine the new value for a variable. By default, variables retain their values
             but handlers can change this behavior.
+            NOTE: value is the PARENT VARIABLE'S value
 """
 handle(value, cmd::VarCommand) = default_handle(value, cmd)
+
+default_handle(value, cmd::VarCommand{:metadata}) = nothing
 
 function default_handle(value, cmd::VarCommand{:metadata, (:create,)})
     cmd.creating && create_from_metadata(cmd)
@@ -270,20 +276,20 @@ function default_handle(value, cmd::VarCommand{:metadata, (:path,)})
 end
 
 function default_handle(value, cmd::VarCommand{:metadata, (:access,)})
-    @debug("@@@ ACCESS METADATA: $(repr(cmd))")
+    println("@@@ ACCESS METADATA: $(repr(cmd))")
     set_access_from_metadata(cmd.var)
 end
 
 function default_handle(value, cmd::VarCommand{:set})
     #println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
     #println("@@@@@@ VAR: $(cmd.var)")
-    changed(cmd.config, cmd.var)
     if !isempty(cmd.var.path)
-        #println("@@@@@@@@ SET PATH: $(cmd.var.path)")
+        println("@@@@@@@@ SET PATH: $(cmd.var.path) OF $(cmd.var)")
         set_path(cmd)
     else
         cmd.var.value = cmd.arg
     end
+    !cmd.cancel && !cmd.var.action && changed(cmd.config, cmd.var)
 end
 
 function default_handle(value, cmd::VarCommand{:get})

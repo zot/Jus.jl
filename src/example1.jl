@@ -9,10 +9,12 @@ import Base.@kwdef
 end
 
 @kwdef mutable struct PersonApp
-    people = Dict()
+    people::Set{Person} = Set()
     namefield = ""
     addressfield = ""
 end
+
+people(app::PersonApp) = sort([app.people...], by = p-> p.name)
 
 function Jus.handle(app::PersonApp, cmd::VarCommand{:create})
     println("@@@ EXAMPLE PERSON APP CREATED")
@@ -44,16 +46,8 @@ function Jus.handle_child(parent::Var, parent_value, app::PersonApp, cmd::VarCom
 end
 
 function new_person(app::PersonApp)
-    app.people[app.namefield] = Person(name = app.namefield, address = app.addressfield)
+    push!(app.people, Person(name = app.namefield, address = app.addressfield))
     app.namefield = ""
     app.addressfield = ""
-    app.new_person.enabled = false
-    app.new_person.note = ""
+    println("Created a person")
 end
-
-function person_app()
-    app = PersonApp()
-    (; app, new_person = Action(()-> new_person(app)))
-end
-
-println("person_app: ", person_app)

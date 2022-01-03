@@ -17,6 +17,7 @@ function oid(con::Connection, obj)
     end
 end
 
+json(cmd::VarCommand, value) = json(cmd.connection, value)
 json(cmd::JusCmd, id::ID) = "$(id.namespace === cmd.namespace ? "@" : id.namespace)/$(id.number)"
 json(con::Connection, id::ID) = "$(id.namespace === con.namespace ? "@" : id.namespace)/$(id.number)"
 json(id::ID) = "$(id.namespace)/$(id.number)"
@@ -126,7 +127,7 @@ function Var(cmd::JusCmd; id::ID, name = Symbol(""), args...)
     haskey(v.metadata, :path) && initial_route_meta(cmd, :path, v)
     for (mk, _) in v.metadata
         mk in (:access, :path, :create) && continue
-        route_meta(cmd, mk, v)
+        initial_route_meta(cmd, mk, v)
     end
     route(v.value, VarCommand(cmd, :create, (), v, creating = true))
     v
@@ -142,16 +143,27 @@ function addvar(cmd::JusCmd, parent::ID, name::Union{Integer, Symbol}, id::ID, v
     v
 end
 
+function set_type(cmd::VarCommand)
+    type = typeof(cmd.var.internal_value)
+    typename = "$(type)"
+    if typename != get(cmd.var.metadata, :type, "")
+        set_metadata(cmd, :type, typename)
+    end
+end
+
 function create_from_metadata(cmd::VarCommand)
-    cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
+    cmd.var.internal_value = cmd.var.value = Main.eval(:($(Symbol(cmd.var.metadata[:create]))()))
     @debug("@@@ CREATED: $(repr(cmd.var.value))")
     VarCommand(cmd, arg = cmd.var.value)
+    set_type(cmd)
 end
 
 function set_access_from_metadata(var::Var)
-    var.action = var.metadata[:access] === "action"
+    println("@@@@ SETTING ACCESS = $(var.metadata[:access]) FOR $(var)")
+    var.action = var.metadata[:access] == "action"
     var.readable = var.metadata[:access] in ["rw", "r"]
-    var.writeable = var.metadata[:access] in ["rw", "w"]
+    var.writeable = var.metadata[:access] in ["rw", "w", "action"]
+    println("@@@@ SETTING ACTION = $(var.action)")
 end
 
 function set_path_from_metadata(var::Var)
@@ -176,7 +188,7 @@ end
 function basic_get_path(cmd::VarCommand, path)
     #println("@@@\n@@@ GETTING PATH")
     cmd.var.parent == EMPTYID && throw(CmdException(:path, cmd, "no parent"))
-    cur = cmd.config[cmd.var.parent].value
+    cur = cmd.config[cmd.var.parent].internal_value
     for el in path
         if el isa Symbol
             try
@@ -209,31 +221,51 @@ function set_path(cmd::VarCommand)
     !cmd.var.writeable && throw(CmdException(:writeable_error, cmd, "variable $(cmd.var.id) is not writeable"))
     cur = basic_get_path(cmd, cmd.var.path[1:end - 1])
     el = cmd.var.path[end]
+    println("SET PATH FOR $(cmd.var)")
     if el isa Symbol
         try
             cur = setfield!(cur, el, cmd.arg)
         catch err
             throw(CmdException(:path, cmd, "error setting $(cmd.var.id) field $(el)", err))
         end
+    elseif cmd.var.action
+        if hasmethod(el, typeof.((cmd, cur)))
+            try
+                el(cmd, cur)
+            catch err
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur))): $(err)", err))
+            end
+        elseif hasmethod(el, typeof.((cur,)))
+            try
+                el(cur)
+            catch err
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur))): $(err)", err))
+            end
+        else
+            throw(CmdException(:path, cmd, "no $(cmd.var.id) action function $(el) for $(typeof.((cur)))"))
+        end
     elseif hasmethod(el, typeof.((cmd, cur, cmd.arg)))
         try
             #println("@@@@@@@@ CALLING $(el) ON $(cur) WITH '$(cmd.arg)'")
-            cur = el(cmd, cur, cmd.arg)
+            el(cmd, cur, cmd.arg)
         catch err
             rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el): $(err)", err))
         end
     elseif hasmethod(el, typeof.((cur, cmd.arg)))
         try
-            cur = el(cur, cmd.arg)
+            el(cur, cmd.arg)
         catch err
             rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) setter function $(el): $(err)", err))
         end
     else
+        println("cmd.var.action:", cmd.var.action, ", metadata:", cmd.var.metadata)
         throw(CmdException(:path, cmd, "no $(cmd.var.id) setter function $(el) for $(typeof.((cur, cmd.arg)))"))
     end
 end
 
 function get_path(cmd::VarCommand)
-    !cmd.var.writeable && throw(CmdException(:readable_error, cmd, "variable $(cmd.var.id) is not readable"))
+    !cmd.var.readable && throw(CmdException(:readable_error, cmd, "variable $(cmd.var.id) is not readable"))
     cmd.var.value = cmd.var.internal_value = basic_get_path(cmd, cmd.var.path)
+    cmd.var.json_value = JSON3.write(json(cmd, cmd.var.value))
+    set_type(cmd)
 end

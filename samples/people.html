@@ -1,0 +1,14 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src='handlebars.min-v4.7.7.js'></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type='module'>
+     import {People} from './people.mjs';
+    
+     window.people = new People();
+    </script>
+    <script type='module' src='people.mjs'></script>
+  </head>
+</html>

@@ -3,18 +3,16 @@ export class Jus {
   namespace;
   secret;
   ready;
-  handlers;
-  disconnectAction;
+  handlers = [];
+  disconnectAction = ()=>{};
   observer;
 
   constructor(addr, observer, namespace = crypto.randomUUID(), secret = crypto.randomUUID()) {
     this.addr = addr;
     this.namespace = namespace;
     this.secret = secret;
-    this.ready = this.connect();
-    this.handlers = [];
-    this.disconnectAction = ()=>{};
     this.observer = observer;
+    this.ready = this.connect();
   }
 
   async connect() {
@@ -32,6 +30,7 @@ export class Jus {
   }
   
   simpleCmd(cmd) {
+    console.log('SENDING MESSAGE', cmd);
     return new Promise((accept, reject)=> {
       this.handlers.push([accept, reject]);
       this.ws.send(JSON.stringify(cmd));
@@ -39,7 +38,9 @@ export class Jus {
   }
 
   async set(...args) {
-    return this.simpleCmd(['set', ...args]);
+    const result = await this.simpleCmd(['set', ...args]);
+    console.log("SET COMMAND RESULT:", result);
+    return result
   }
 
   async get(...args) {
@@ -47,12 +48,15 @@ export class Jus {
   }
 
   async observe(...args) {
-    this.simpleCmd(['observe', ...args]);
+    console.log("SENDING OBSERVE COMMAND")
+    const result = await this.simpleCmd(['observe', ...args]);
+    console.log("OBSERVE COMMAND RESULT:", result);
+    return result
   }
 
-  update(items) {
-    for (let i = 0; i < items.length; i += 2) {
-      this.observer(items[i], items[i + 1]);
+  update(info) {
+    for (const k of Object.keys(info)) {
+      this.observer(k, info[k]);
     }
   }
 
