@@ -1,5 +1,51 @@
+import {TextField} from '@material/mwc-textfield';
+
+console.log("MWC TEXT FIELD:", TextField);
+
+export const DEFAULT_METADATA = /(^.*):(?:(.*),)?defaults(?:,(.*))?$|^([^:]+)$/
+export const EVENT_BINDING = /^data-on-(.*)$/
+export const BIND_METADATA = /(^.*):(?:(.*),)?(get|set|prop)=([^,]+)(?:,(.*))?$/
+// known event names for list selection changes (in select and mwc-list elements)
+const LIST_SELECT_EVENTS = ['change', 'selected']
+
 function clean(word) {
   return word.match(/^([^:()]*)(\(\))?$/)[1]
+}
+
+function findall(el, sel) {
+  let result = [...el.querySelectorAll(sel)]
+
+  if (el.matches(sel)) result.unshift(el);
+  return result;
+}
+
+function isTextField(node) {
+  return node instanceof HTMLInputElement || node instanceof TextField
+}
+
+function updateFromEvent(node, set, variable) {
+  if (node[set] instanceof Function) {
+    node[set](variable.value);
+  } else {
+    node[set] = variable.value;
+  }
+}
+
+/**
+ * Takes a 5-group expression: (varname) (preceding md) (name) (value) (trailing md)
+ * returns [newVarName, name, value]
+ */
+function extractMetadata(varName, regexp) {
+  const m = varName.match(regexp)
+  let newName = ''
+
+  if (!m) return [false, false, false];
+  newName += m[1]
+  if (m[2] || m[5]) newName += ':';
+  if (m[2]) newName += m[2];
+  if (m[2] && m[5]) newName += ',';
+  if (m[5]) newName += m[5];
+  return [newName, m[3], m[4]];
 }
 
 export class View {
@@ -7,7 +53,9 @@ export class View {
   rootVar;
   type;
   namespace;
+  parent;
   children = [];
+  nodes = new Set();
 
   constructor(rootVar, namespace) {
     this.rootVar = rootVar;
@@ -31,37 +79,123 @@ export class View {
     return this;
   }
 
-  async prepVar(attr) {
-    if (attr.indexOf(':') == -1) attr = `${clean(attr)}:path=${attr},access=action`;
-    return await this.env.createVar(attr, this.rootVar);
+  async prepVar(node, varName, defaults) {
+    const m = varName.match(DEFAULT_METADATA);
+
+    if (m && m[4]) { // no metadata
+      varName = `${clean(varName)}:path=${varName},${defaults}`;
+    } else if (m && m[1]) { // metadata containing "defaults"
+      varName = `${clean(m[1])}:path=${m[1]},${defaults}`
+      if (m[2]) varName += `,${m[2]}`
+      if (m[3]) varName += `,${m[3]}`
+    }
+    return await this.env.createVar(varName, this.rootVar, true);
+  }
+
+  async scanAttr(el, attr, defaults, action) {
+    for (const node of findall(el, `[${attr}]`)) {
+      this.nodes.add(node);
+      if (defaults instanceof Function) defaults = defaults(node);
+      action(await this.prepVar(node, node.getAttribute(attr), defaults), node);
+    }
+  }
+
+  async createList(v, node) {
+    let oldLen = Array.isArray(v.value) ? v.value.length : 0;
+    let views = [];
+
+    v.observe(async ()=> {
+      let newLen = Array.isArray(v.value) ? v.value.length : 0;
+
+      console.log(`Length of ${v.name}(${v.id}) changed from ${oldLen} to ${newLen}`, v);
+      for (; newLen < oldLen; oldLen--) { // the list shrunk
+        const view = views.pop();
+
+        view.parentElement.remote();
+        view.var.delete();
+      }
+      node.jus_disable_events = true;
+      try {
+        for (; oldLen < newLen; oldLen++) { // the list grew
+          let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v, true);
+          let view = await this.env.present(newVar, node.getAttribute('data-namespace'));
+
+          views.push(view);
+          node.appendChild(view.element);
+        }
+        for (const evt of LIST_SELECT_EVENTS) {
+          const evtInfo = node.jus_events && node.jus_events[evt];
+
+          if (evtInfo) {
+            updateFromEvent(node, evtInfo.set, evtInfo.variable)
+          }
+        }
+      } finally {
+        node.jus_disable_events = false;
+      }
+      oldLen = newLen;
+    });
   }
 
   async scan(el) {
-    for (const node of el.querySelectorAll('[data-text],[data-html],[data-value],[data-click],[data-views]')) {
-      let attr;
+    await this.scanAttr(el, 'data-text', 'access=r', (v, node)=> v.observe(()=> node.textContent = v.value));
+    await this.scanAttr(el, 'data-value', node=> isTextField(node) ? 'access=rw,blur' : 'access=rw', (v, node)=> {
+      v.observe(()=> {
+        if (isTextField(node)) {
+          node.value = v.value;
+        } else {
+          node.textContent = v.value;
+        }
+      });
+      if ('blur' in v.metadata) {
+        node.addEventListener('blur', ()=> v.set(node.value));
+      }
+    });
+    await this.scanAttr(el, 'data-click', 'access=action', (v, node)=> node.onclick = ()=> this.jus.set(v.id, 'true'));
+    await this.scanAttr(el, 'data-list', 'access=r', (v, node)=> this.createList(v, node));
+    await this.scanAttr(el, 'data-tooltip', 'access=r', (v, node)=> v.observe(()=> node.setAttribute('title', v.value)));
+    await this.scanAttr(el, 'data-enabled', 'access=r', (v, node)=> v.observe(()=> node.disabled = !v.value));
+    for (const node of this.nodes) {
+      for (const attr of node.attributes) {
+        const m = attr.name.match(EVENT_BINDING);
 
-      if (attr = node.getAttribute('data-text')) {
-        const v = await this.prepVar(attr);
-        v.observe(()=> node.textContent = v.value);
-      }
-      if (attr = node.getAttribute('data-click')) {
-        const v = await this.prepVar(attr);
-        node.onclick = ()=> this.jus.set(v.id, 'true');
-      }
-      if (attr = node.getAttribute('data-views')) {
-        const v = await this.prepVar(attr);
-        v.observe(()=> this.newVarList(v))
+        if (!m) continue;
+        await this.bindEvent(m[1], node, attr.value);
       }
     }
   }
 
-  newVarList(aVar) {
-    const oldLen = aVar.oldLen || 0;
-    const newLen = aVar.value?.length || 0;
-
-    if (oldLen !== newLen) {
-      console.log(`Length of ${aVar.name}(${aVar.id}) changed from ${oldLen} to ${newLen}`);
+  async bindEvent(evt, node, varName) {
+    const [n1, p1, v1] = extractMetadata(varName, BIND_METADATA);
+    if (!p1) throw new Error("Bad event binding ${varName}");
+    let get, set
+    if (p1 == 'prop') {
+      get = set = v1;
+      varName = n1
+    } else {
+      const [n2, p2, v2] = extractMetadata(n1, BIND_METADATA);
+      if (!((p1 == 'set' && p2 == 'get') || (p1 == 'get' && p2 == 'set'))) {
+        throw new Error("Bad event binding ${varName}");
+      }
+      get = p1 == 'get' ? v1 : v2;
+      set = p1 == 'set' ? v1 : v2;
+      varName = n2
     }
+    const v = await this.prepVar(node, varName, 'access=rw');
+    if (!node.jus_events) node.jus_events = {};
+    node.jus_events[evt] = {set, variable: v};
+    await v.observe(()=> {
+      updateFromEvent(node, set, v)
+    });
+    node.addEventListener(evt, ()=> {
+      if (node.jus_disable_events) return;
+      const value = node[get];
+
+      console.log(`GOT ${evt} EVENT`);
+      if (v.value != value) {
+        v.set(value);
+      }
+    });
   }
 
   async update() {

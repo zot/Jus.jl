@@ -17,7 +17,7 @@ export class Jus {
 
   async connect() {
     this.ws = await new Promise((accept, reject)=> {
-      const ws = new WebSocket(`ws://${this.addr}`);
+      const ws = new WebSocket(`ws://${this.addr}/ws`);
 
       ws.addEventListener('open', ()=> accept(ws));
       ws.addEventListener('error', ()=> {

@@ -1,14 +1,15 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src='handlebars.min-v4.7.7.js'></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./node_modules/@webcomponents/webcomponentsjs/webcomponents-loader.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Material+Icons&display=block" rel="stylesheet">
     <script type='module'>
-     import {People} from './people.mjs';
-    
+     import {People} from './output/people.js';
+     
      window.people = new People();
     </script>
-    <script type='module' src='people.mjs'></script>
   </head>
 </html>

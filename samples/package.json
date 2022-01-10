@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@material/mwc-button": "^0.25.3",
+    "@material/mwc-dialog": "^0.25.3",
+    "@material/mwc-formfield": "^0.25.3",
+    "@material/mwc-list": "^0.25.3",
+    "@material/mwc-textfield": "^0.25.3",
+    "@webcomponents/webcomponentsjs": "^2.6.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^13.1.3"
+  }
+}

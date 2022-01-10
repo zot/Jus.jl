@@ -52,7 +52,7 @@ A variable:
     readable::Bool = true
     writeable::Bool = true
     action::Bool = false
-    path::Vector{Union{Symbol, Function}} = []
+    path::Vector{Union{Number, Symbol, Function}} = []
     json_value = nothing
 end
 
@@ -170,7 +170,7 @@ end
 
 parent(cmd::VarCommand) = VarCommand(cmd; var = parent_var(cmd))
 
-Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}()")
+Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}($(cmd.creating ? "creating" : "not creating"))")
 
 struct NoCause <: Exception end
 

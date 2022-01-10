@@ -6,7 +6,8 @@ const UNKNOWN = "?"
 const PATH_COMPONENT = r"^([-[:alnum:]]+|@)/([0-9]+)$"
 const VAR_NAME = r"^([0-9]+|\pL\p{Xan}*)(?::((\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(?:,(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?)*))?$"
 const METAPROP = r"(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(,|$)"
-const JPATH_COMPONENT = r"^([\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*)(?:((?:\.[\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*)*)\(\))?$"
+const ARRAY_INDEX = r"[1-9][0-9]*"
+const JPATH_COMPONENT = r"^([\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*|[1-9][0-9]*)(?:((?:\.[\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*)*)\(\))?$"
 
 oid(cmd::JusCmd, obj) = oid(connection(cmd), obj)
 function oid(con::Connection, obj)
@@ -17,17 +18,29 @@ function oid(con::Connection, obj)
     end
 end
 
-json(cmd::VarCommand, value) = json(cmd.connection, value)
+json(cmd::VarCommand, id::ID) = json(cmd.connection, value)
 json(cmd::JusCmd, id::ID) = "$(id.namespace === cmd.namespace ? "@" : id.namespace)/$(id.number)"
 json(con::Connection, id::ID) = "$(id.namespace === con.namespace ? "@" : id.namespace)/$(id.number)"
 json(id::ID) = "$(id.namespace)/$(id.number)"
 json(cmd::JusCmd, data) = json(cmd.config, connection(cmd), data)
+json(cmd::VarCommand, value) = json(cmd.config, cmd.connection, value)
 function json(cfg::Config, con::Connection, data)
     try
-        JSON3.write(data)
-        data
+        JSON3.read(JSON3.write(data))
+        #data
     catch
-        cfg.verbose ? (; ref = oid(con, data), repr = repr(data)) : (; ref = oid(con, data))
+        if data isa AbstractArray
+            map(d-> json(cfg, con, d), data)
+        elseif data isa AbstractDict
+            for (k, _) in data
+                if !(k isa Symbol || k isa AbstractString)
+                    throw("Cannot encode object property $(k)")
+                end
+            end
+            Dict([k => json(cfg, con, v) for (k,v) in data]...)
+        else
+            cfg.verbose ? (; ref = oid(con, data), repr = repr(data)) : (; ref = oid(con, data))
+        end
     end
 end
 
@@ -89,7 +102,7 @@ function parsemetadata(meta::AbstractString, original_meta = nothing)
     while meta !== ""
         (m = match(METAPROP, meta)) === nothing && throw("Bad metaproperty format: $(meta)")
         #println("@@@@@@ METAPROP $(m[1]) = $(m[2])")
-        metadata[Symbol(m[1])] = m[2]
+        metadata[Symbol(m[1])] = m[2] === nothing ? "" : m[2]
         length(meta) == length(m.match) && break
         meta[length(m.match)] != ',' && throw("Bad metaproperty format: $(meta)")
         meta = meta[length(m.match) + 1:end]
@@ -166,23 +179,29 @@ function set_access_from_metadata(var::Var)
     println("@@@@ SETTING ACTION = $(var.action)")
 end
 
-function set_path_from_metadata(var::Var)
-    #println("@@@@@@ SETTING PATH FROM METADATA $(var.metadata[:path])")
-    var.path = []
-    path = var.path
-    for el in split(var.metadata[:path])
+function set_path_from_metadata(cmd::VarCommand)
+    #println("@@@@@@ SETTING PATH FROM METADATA $(cmd.var.metadata[:path])")
+    cmd.var.path = []
+    path = cmd.var.path
+    for el in split(cmd.var.metadata[:path])
         m = match(JPATH_COMPONENT, el)
-        m === nothing && throw("Bad path component in $(var): $(el)")
+        m === nothing && throw("Bad path component in $(cmd.var): $(el)")
         #println("@@@@@@ PATH COMPONENT: $(m[1]), $(m[2])")
         if m[2] !== nothing
-            push!(path, Main.eval(Meta.parse(m[1] * m[2])))
+            try
+                push!(path, Main.eval(Meta.parse(m[1] * m[2])))
+            catch err
+                throw(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
+            end
+        elseif match(ARRAY_INDEX, m[1]) !== nothing
+            push!(path, parse(Int, m[1]))
         else
             push!(path, Symbol(m[1]))
         end
         #println("@@@@@@ PATH COMPONENT VALUE: $(path[end])")
     end
     #println("@@@@@@ PATH: $(path)")
-    #println("@@@@@@ VAR PATH: $(var.path)")
+    #println("@@@@@@ VAR PATH: $(cmd.var.path)")
 end
 
 function basic_get_path(cmd::VarCommand, path)
@@ -193,6 +212,12 @@ function basic_get_path(cmd::VarCommand, path)
         if el isa Symbol
             try
                 cur = getfield(cur, el)
+            catch err
+                throw(CmdException(:path, cmd, "error getting field $(el)", err))
+            end
+        elseif el isa Number
+            try
+                cur = getindex(cur, el)
             catch err
                 throw(CmdException(:path, cmd, "error getting field $(el)", err))
             end
@@ -209,7 +234,7 @@ function basic_get_path(cmd::VarCommand, path)
                 throw(CmdException(:program, cmd, "error calling getter function $(el)", err))
             end
         else
-            throw(CmdException(:path, cmd, "No getter method $(el) for $(typeof.((cur)))"))
+            throw(CmdException(:path, cmd, "No getter method $(el) for $(typeof.((cur,)))"))
         end
     end
     cur
@@ -233,16 +258,16 @@ function set_path(cmd::VarCommand)
             try
                 el(cmd, cur)
             catch err
-                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur))): $(err)", err))
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur,))): $(err)", err))
             end
         elseif hasmethod(el, typeof.((cur,)))
             try
                 el(cur)
             catch err
-                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur))): $(err)", err))
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var.id) action function $(el) for $(typeof.((cur,))): $(err)", err))
             end
         else
-            throw(CmdException(:path, cmd, "no $(cmd.var.id) action function $(el) for $(typeof.((cur)))"))
+            throw(CmdException(:path, cmd, "no $(cmd.var.id) action function $(el) for $(typeof.((cur,)))"))
         end
     elseif hasmethod(el, typeof.((cmd, cur, cmd.arg)))
         try

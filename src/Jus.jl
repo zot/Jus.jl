@@ -181,8 +181,10 @@ set_metadata(cmd::VarCommand, name::Symbol, value) = set_metadata(cmd, cmd.var, 
 set_metadata(cmd::VarCommand, varname::Symbol, name::Symbol, value) =
     set_metadata(cmd, cmd.var[varname], name, value)
 function set_metadata(cmd::VarCommand, var::Var, name::Symbol, value::AbstractString)
-    var.metadata[name] = value
-    changed(cmd.config, var, name)
+    if !haskey(var.metadata, name) || get(var.metadata, name, "") != value
+        var.metadata[name] = value
+        changed(cmd.config, var, name)
+    end
 end
 
 """
@@ -272,7 +274,7 @@ end
 
 function default_handle(value, cmd::VarCommand{:metadata, (:path,)})
     @debug("@@@ PATH METADATA: $(repr(cmd))")
-    set_path_from_metadata(cmd.var)
+    set_path_from_metadata(cmd)
 end
 
 function default_handle(value, cmd::VarCommand{:metadata, (:access,)})

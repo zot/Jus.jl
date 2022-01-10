@@ -2,7 +2,9 @@ import {Jus} from './jus.mjs'
 import {View, Views} from './views.mjs'
 
 const FULL_NAME = /^([^:]+)(:(.*))?$/;
-const META_PROPERTY = /^([^,=]+)=([^,]*)(?:,(.*))?$/
+const META_PROPERTY = /^([^,=]+)(?:=([^,]*)(?:,(.*))?)?$/
+
+function last(x) {return x[x.length - 1]}
 
 export class Var {
   id;
@@ -16,24 +18,45 @@ export class Var {
   constructor(id, name, parent, env) {
     this.id = id;
     this.env = env;
-    name && this.parseMetadata(name);
     if (parent) {
+      const siblingNames = new Set(Object.values(parent.children).map(c=> c.name));
+      const nameParts = name.match(FULL_NAME)
+      const baseName = last(nameParts[1].split(/ +/));
+      let tmpName = baseName;
+      let counter = 0;
+
       this.parent = parent;
-      this.parent.children[id] = this;
+      if (name) {
+        while (siblingNames.has(tmpName)) tmpName = `${baseName}-${++counter}`
+        this.parent.children[id] = this;
+        if (tmpName != baseName) {
+          const pathParts = name.match(FULL_NAME)[1].split(/ +/);
+
+          pathParts.pop();
+          pathParts.push(tmpName);
+          name = pathParts.join(" ")
+          if (nameParts[2]) {
+            name += nameParts[2]
+          }
+        }
+      }
     }
+    name && this.parseMetadata(name);
   }
 
   get destroyed() {return !this.id;}
 
   get type() {return this.metadata.type}
 
+  metadataString() {return Object.entries(this.metadata).map(e=> `${e[0]}=${e[1]}`).join(',');}
+
   parseMetadata(name) {
     let m = name.match(FULL_NAME);
 
     this.name = m[1] == "@/0" ? "" : m[1];
     if (!m[2]) return;
-    for (m = m[3].match(META_PROPERTY); m && m[3]; m = m[3].match(META_PROPERTY)) {
-      this.metadata[m[1]] = m[2];
+    for (m = m[3].match(META_PROPERTY); m && m[1]; m = (m[3] || '').match(META_PROPERTY)) {
+      this.metadata[m[1]] = (m[2] || '');
     }
   }
 
@@ -46,7 +69,13 @@ export class Var {
         this.metadata[k] = info.metadata[k];
       }
     }
-    for (const o of this.observers) o(info);
+    for (const o of this.observers) {
+      try {
+        o(info);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }
 
   addChild(name) {
@@ -62,6 +91,12 @@ export class Var {
   destroyChildren() {
     for (const child of Object.values(this.children)) {
       child.destroy();
+    }
+  }
+
+  set(value) {
+    if (this.value != value) {
+      this.env.jus.set(this.id, value);
     }
   }
 }
@@ -83,9 +118,12 @@ export class Env {
   }
 
   async createVar(name, parent) {
-    const varPath = parent ? `${parent.id} ${name}` : name;
     const v = this.addVar(`@/${this.nextId++}`, name, parent);
+    const nameParts = name.match(FULL_NAME)
+    let varPath = parent ? `${parent.id} ` : ''
 
+    varPath += v.name || nameParts[1]
+    if (Object.keys(v.metadata).length) varPath += `:${v.metadataString()}`
     await this.jus.set('-c', varPath, 'true');
     return v;
   }

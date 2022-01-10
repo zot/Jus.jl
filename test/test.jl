@@ -123,6 +123,7 @@ function test1()
     assert_type(var(1), PersonApp)
     app = var(1).value
     output(ws, ["observe", "@/1"])
+    expect(ws, result = [])
     expect(ws, update = Dict(Symbol("@/1") =>
         (;
          set = (; ref = 1),
@@ -162,14 +163,6 @@ function test1()
             (;
              set = "",
              ),
-        Symbol("@/2") =>
-            (;
-             metadata =
-                 (;
-                  note = "A new person needs a name",
-                  enabled = "false",
-                  )
-             )
     ))
     output(ws, ["set", "-c", "@/1 address:path=addressfield", "true"])
     expect(ws, result = ["@/4"])
@@ -186,7 +179,6 @@ function test1()
     ))
     output(ws, ["set", "@/4", "1234 Elm St"])
     expect(ws, result = [])
-    #println("APP: $(app)")
     expect(ws, update = Dict(
         Symbol("@/4") =>
             (;
@@ -195,13 +187,79 @@ function test1()
     ))
     output(ws, ["set", "@/3", "fred"])
     expect(ws, result = [])
-    println("APP: $(app)")
     expect(ws, update = Dict(
         Symbol("@/3") =>
             (;
              set = "fred",
              ),
     ))
+    output(ws, ["set", "-c", "@/1 people:path=people(),access=r", "true"])
+    expect(ws, result = ["@/5"])
+    expect(ws, update = Dict(
+        Symbol("@/5") =>
+            (;
+             set = [],
+             metadata = (;
+                         path = "people()",
+                         access = "r",
+                         type = "Vector{Any}"
+                         ),
+             )))
+    # make a person
+    output(ws, ["set", "@/2", "true"])
+    expect(ws, result = [])
+    expect(ws, update = Dict(
+        Symbol("@/3") =>
+            (;
+             set = "",
+             ),
+        Symbol("@/4") =>
+            (;
+             set = "",
+             ),
+        Symbol("@/5") =>
+            (;
+             set = [(;ref = 2)],
+             metadata = (;
+                         type = "Vector{Person}"
+                         ),
+             ),
+    ))
+
+    output(ws, ["set", "@/3", "joe"])
+    expect(ws, result = [])
+    expect(ws, update = Dict(
+        Symbol("@/3") =>
+            (;
+             set = "joe",
+             ),
+    ))
+    output(ws, ["set", "@/4", "1234 Elm St"])
+    expect(ws, result = [])
+    expect(ws, update = Dict(
+        Symbol("@/4") =>
+            (;
+             set = "1234 Elm St",
+             ),
+    ))
+    # make a person
+    output(ws, ["set", "@/2", "true"])
+    expect(ws, result = [])
+    expect(ws, update = Dict(
+        Symbol("@/3") =>
+            (;
+             set = "",
+             ),
+        Symbol("@/4") =>
+            (;
+             set = "",
+             ),
+        Symbol("@/5") =>
+            (;
+             set = [(;ref = 2), (;ref = 3)],
+             ),
+    ))
+
     close(ws)
     fetch(task)
 end

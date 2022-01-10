@@ -55,8 +55,10 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
         cmd.config[last], false
     elseif parent == EMPTYID
         throw("Attempt to get path with no parent, path: $(path)")
-    elseif create && last isa Union{Symbol, Integer} && !haskey(cmd.config[parent], last)
+    elseif create && last isa Union{Symbol, Number} && !haskey(cmd.config[parent], last)
         addvar(cmd, parent, last, ID(cmd), value, metadata), true
+    elseif create
+        throw("ERROR, attempt to create a variable that already exists: $(path)")
     else
         @debug("PATH -> $(parent).$(repr(last))")
         @debug("PARENT: $(repr(cmd.config[parent]))")
@@ -163,7 +165,11 @@ end
 
 function refresh(cmd::JusCmd)
     for (_, v) in cmd.config.vars
-        v.parent == EMPTYID && refresh(cmd, v)
+        try
+            v.parent == EMPTYID && refresh(cmd, v)
+        catch err
+            @error "Error refreshing", err
+        end
     end
 end
 
@@ -221,10 +227,85 @@ function serve(config::Config, ws)
     @debug("CLIENT CLOSED: $(repr(namespace))")
 end
 
+const FILE_EXT_PAT = r"^(.*)\.([^.]*)$"
+
+const MIME_TYPES_FOR_EXTENSIONS = Dict(
+    "js" => "text/javascript",
+    "mjs" => "text/javascript",
+    "css" => "text/css",
+    "html" => "text/html",
+    "png" => "image/png",
+    "jpg" => "image/jpg",
+    "gif" => "image/gif",
+)
+
+function mime_type(filename::AbstractString)
+    m = match(FILE_EXT_PAT, filename)
+    m === nothing && throw("Unknown MIME type for filename $(filename)")
+    _, ext = m
+    return get(MIME_TYPES_FOR_EXTENSIONS, ext) do
+        throw("Unknown MIME type for filename $(filename) with extension $(ext)")
+    end
+end
+
+"""
+    serve_file
+
+taken from [yig's file server](https://gist.github.com/yig/f65e86b7730019d4060449f24342fcb4)
+enhanced to handle mime types
+"""
+function serve_file(req::HTTP.Request)
+    ## If it's not a path inside the jail (current working directory), return a 403.
+    jail = realpath(pwd())
+    # println( "Jail path: ", jail )
+        
+    ## Convert the request path to a real path (remove symlinks, remove . and ..)
+    ## UPDATE: realpath() assumes that the input points to something that exists.
+    ##         We can't use it, since we don't know if the requested path exists.
+    ##         We'll use normpath() instead.
+    ## Requests start with "/" referring to the server as the root.
+    @assert length(req.target) > 0 && req.target[1] == '/'
+    ## Drop the leading "/".
+    request_path = normpath(req.target[2:end])
+    ## Convert it to a relative path.
+    relative_path = relpath(request_path, jail)
+    println("Requested path: ", request_path)
+    ## Return forbidden if the request is above the current working directory.
+    if length(relative_path) > 0 && splitpath(relative_path)[1] == ".."
+        @show return HTTP.Response(403)
+    ## Return not implemented if the request is for a directory.
+    ## TODO: If it's a directory, return a file listing.
+    elseif isdir(relative_path)
+        ## Is there an index.html?
+        index = joinpath(relative_path, "index.html")
+        if isfile(index)
+            HTTP.Response(200, ["Content-Type" => mime_type(req.target)], body = read(index))
+        else
+            @show return HTTP.Response(501)
+        end
+        ## Return the contents for a file.
+    elseif isfile(relative_path)
+        return HTTP.Response(200, ["Content-Type" => mime_type(req.target)], body = read( relative_path))
+    else
+        @show return HTTP.Response(404)
+    end
+    ## If it's not a file, return a 404.
+end
+
 function server(config::Config)
+    router = HTTP.Router()
+
     println("SERVER ON $(config.host):$(config.port)")
-    HTTP.WebSockets.listen(config.host, config.port) do ws
-        config.serverfunc(config, ws)
+    HTTP.@register(router, "GET", "/ws", r-> serve_websocket(config, r))
+    HTTP.@register(router, "GET", "/", serve_file)
+    HTTP.listen(config.host, config.port) do http
+        if http.message.target == "/ws"
+            HTTP.WebSockets.upgrade(http) do ws
+                config.serverfunc(config, ws)
+            end
+        else
+            HTTP.handle(router, http)
+        end
     end
     @debug("HTTP SERVER FINISHED")
 end

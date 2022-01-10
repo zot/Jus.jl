@@ -1,3 +1,6 @@
+import '@material/mwc-list';
+import '@material/mwc-button';
+import '@material/mwc-textfield';
 import {Var, Env} from './vars.mjs';
 
 const $ = (sel)=> document.querySelector(sel)
