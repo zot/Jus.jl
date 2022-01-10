@@ -1,6 +1,7 @@
 import '@material/mwc-list';
 import '@material/mwc-button';
 import '@material/mwc-textfield';
+import '@material/mwc-circular-progress';
 import {Var, Env} from './vars.mjs';
 
 const $ = (sel)=> document.querySelector(sel)
@@ -16,6 +17,10 @@ export class People {
   }
 
   async init() {
+    const progress = document.createElement('mwc-circular-progress');
+
+    progress.setAttribute('indeterminate', '');
+    document.body.append(progress);
     console.log("Contacting Jus");
     this.env = new Env();
     this.namespace = crypto.randomUUID();
@@ -29,6 +34,7 @@ export class People {
     console.log(`presenting people`);
     const view = await this.env.present(this.root);
     console.log(`Got View`, view);
+    progress.remove();
     document.body.appendChild(view.element);
   }
 }

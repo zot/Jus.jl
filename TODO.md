@@ -1,6 +1,8 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
+- [ ] merge result and update into one object (pass result to finish_command)
+  - process in result, update order but only return from promise after both
 - [ ] floating editor mode (1 or 2 additional views for PersonApp)
 - [X] use [material web components for widgets](https://github.com/material-components/material-web)
 - [ ] naked objects for types that have no vewidef
@@ -13,7 +15,9 @@ Parts
   - [X] parents can alter commands
   - [X] current values can alter commands
 - [X] refreshing
-  - [ ] parents can transform variable values (needs testing)
+  - [ ] parents can transform variable values
+    - [X] implement
+    - [ ] test
 - [X] metadata
   - [X] path
     - [X] composed of fields and functions: "a b() c d"

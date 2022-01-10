@@ -56,13 +56,19 @@ export class View {
   parent;
   children = [];
   nodes = new Set();
+  selectableNodes = [];
+  disablingSelection = false;
 
-  constructor(rootVar, namespace) {
+  constructor(rootVar, namespace, parent) {
     this.rootVar = rootVar;
     this.namespace = namespace;
     this.type = rootVar.type;
     rootVar.observe(()=> this.update());
     this.views.activeViews.add(this);
+    if (parent) {
+      this.parent = parent
+      parent.children.push(this)
+    }
   }
 
   get env() {return this.rootVar.env;}
@@ -100,10 +106,39 @@ export class View {
     }
   }
 
+  async disableSelections(func) {
+    this.parent ? this.parent.handleDisableSelections(func) : func();
+  }
+
+  async handleDisableSelections(func) {
+    this.disablingSelection++;
+    try {
+      const result = func();
+
+      if (result instanceof Promise) await result;
+    } finally {
+      this.disablingSelection--;
+      this.restoreSelections();
+    }
+  }
+
+  restoreSelections() {
+    for (const evt of LIST_SELECT_EVENTS) {
+      for (const node of this.selectableNodes) {
+        const evtInfo = node.jus_events && node.jus_events[evt];
+
+        if (evtInfo) {
+          updateFromEvent(node, evtInfo.set, evtInfo.variable)
+        }
+      }
+    }
+  }
+
   async createList(v, node) {
     let oldLen = Array.isArray(v.value) ? v.value.length : 0;
     let views = [];
 
+    this.selectableNodes.push(node);
     v.observe(async ()=> {
       let newLen = Array.isArray(v.value) ? v.value.length : 0;
 
@@ -114,24 +149,12 @@ export class View {
         view.parentElement.remote();
         view.var.delete();
       }
-      node.jus_disable_events = true;
-      try {
-        for (; oldLen < newLen; oldLen++) { // the list grew
-          let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v, true);
-          let view = await this.env.present(newVar, node.getAttribute('data-namespace'));
+      for (; oldLen < newLen; oldLen++) { // the list grew
+        let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v, true);
+        let view = await this.env.present(newVar, node.getAttribute('data-namespace'), this);
 
-          views.push(view);
-          node.appendChild(view.element);
-        }
-        for (const evt of LIST_SELECT_EVENTS) {
-          const evtInfo = node.jus_events && node.jus_events[evt];
-
-          if (evtInfo) {
-            updateFromEvent(node, evtInfo.set, evtInfo.variable)
-          }
-        }
-      } finally {
-        node.jus_disable_events = false;
+        views.push(view);
+        node.appendChild(view.element);
       }
       oldLen = newLen;
     });
@@ -188,10 +211,8 @@ export class View {
       updateFromEvent(node, set, v)
     });
     node.addEventListener(evt, ()=> {
-      if (node.jus_disable_events) return;
+      if (this.disablingSelection) return;
       const value = node[get];
-
-      console.log(`GOT ${evt} EVENT`);
       if (v.value != value) {
         v.set(value);
       }
@@ -200,11 +221,14 @@ export class View {
 
   async update() {
     if (this.rootVar.type == this.type) return;
-    this.rootVar.destroyChildren();
-    this.destroyChildren();
-    const oldElement = this.element;
-    await this.fetchElement();
-    oldElement.replaceWith(this.element);
+    this.disableSelections(async ()=> {
+      this.selectableNodes = [];
+      this.rootVar.destroyChildren();
+      this.destroyChildren();
+      const oldElement = this.element;
+      await this.fetchElement();
+      oldElement.replaceWith(this.element);
+    });
   }
 
   destroy() {

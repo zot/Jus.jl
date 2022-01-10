@@ -6,6 +6,9 @@ jus.so:
 samples: FRC
 	cd samples; $(MAKE)
 
+run: FRC
+	./jus ROOT -s localhost:7777
+
 watch: FRC
 	cd samples; $(MAKE) watch
 

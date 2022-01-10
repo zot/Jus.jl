@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@material/mwc-button": "^0.25.3",
+    "@material/mwc-circular-progress": "^0.25.3",
     "@material/mwc-dialog": "^0.25.3",
     "@material/mwc-formfield": "^0.25.3",
     "@material/mwc-list": "^0.25.3",

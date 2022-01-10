@@ -113,8 +113,8 @@ export class Env {
     return this.jus.ready;
   }
 
-  async present(rootVar, namespace) {
-    return new View(rootVar, namespace).fetchElement();
+  async present(rootVar, namespace, parent) {
+    return new View(rootVar, namespace, parent).fetchElement();
   }
 
   async createVar(name, parent) {
