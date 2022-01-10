@@ -1,7 +1,7 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
-- [ ] use [material web components for widgets](https://github.com/material-components/material-web)
+- [X] use [material web components for widgets](https://github.com/material-components/material-web)
 - [ ] naked objects for types that have no vewidef
 
 Parts

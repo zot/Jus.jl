@@ -1,5 +1,4 @@
 * BUGS
-- In [[http://localhost:8080/samples/people.html][the people page]], clicking '+' adds a person but doesn't send an update
 
 * Commands
 Monitored values are pushed
