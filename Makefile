@@ -6,12 +6,6 @@ jus.so:
 samples: samples/output/widgets.js
 
 run: FRC
-	./jus ROOT -s localhost:7777
-
-samples/output/people.js:
-	rollup -c rollup-widgets.mjs
-
-watch: FRC
-	rollup -c rollup-widgets.mjs -w
+	./jus ROOT -s localhost:7777 -e 'include("../samples/src/example1.jl")' -i samples/html
 
 FRC:

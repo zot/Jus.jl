@@ -13,10 +13,12 @@ function usage()
 
 NAMESPACE is this jus instance's namespace
 
--s ADDR     run server on ADDR if ADDR starts with '/', use a UNIX domain socket
+-s ADDR     serve HTTP requests on ADDR if ADDR starts with '/', use a UNIX domain socket
 -c ADDR     connect to ADDR using NAMESPACE
 -x SECRET   use secret to prove ownership of NAMESPACE. If NAMESPACE does not yet exist,
             the server creates it and associates SECRET with it.
+-i DIR      include dir to the http server file path
+-e EXPR     evaluate Julia expression
 -v          verbose
 
 COMMANDS
@@ -124,6 +126,8 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     i = 2
     while i <= length(args)
         @match args[i] begin
+            "-e" => Main.eval(Meta.parse(args[i += 1]))
+            "-i" => add_file_dir(args[i += 1])
             "-v" => (config.verbose = true)
             "-x" => (config.secret = args[i += 1])
             "-c" => begin

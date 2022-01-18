@@ -3,20 +3,19 @@
     <meta charset="UTF-8">
     <!--
          <script src="../node_modules/@webcomponents/webcomponentsjs/webcomponents-loader.js"></script>
-         <link rel="preconnect" href="https://fonts.googleapis.com">
-         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-         <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500" rel="stylesheet">
-         <link href="https://fonts.googleapis.com/css?family=Material+Icons&display=block" rel="stylesheet">
     -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Material+Icons&display=block" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com/"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@microsoft/fast-components@2.16.0/dist/fast-components.min.js"></script>
     <script type='module'>
-     import {Views, Shell} from '../html/js/shell.mjs'
-     import {init} from './output/widgets.js'
+     import {Views, Shell} from './js/shell.mjs'
+     import {init} from './js/fast.mjs'
      
-     init(Views);
-     //const progress = document.createElement('mwc-circular-progress');
      const progress = document.createElement('fast-progress-ring');
-     //const progress = document.createElement('div');
+     init(Views);
      progress.setAttribute('indeterminate', '');
      document.body.append(progress);
      console.log("Contacting Jus");

@@ -6,6 +6,7 @@ using Base.Filesystem
 using Match
 using HTTP
 using Generators
+using Pkg
 
 import Base.@kwdef
 import Base.Iterators.flatten
@@ -16,5 +17,3 @@ include("Jus.jl")
 include("server.jl")
 
 end
-
-include("example1.jl")

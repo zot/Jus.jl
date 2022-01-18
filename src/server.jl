@@ -1,6 +1,10 @@
 const NUM = r"^[0-9]+$"
 const NAME = r"^\pL\p{Xan}*$"
 
+const moduledir = pathof(Jus)
+const pkgdir = moduledir !== nothing ? dirname(moduledir) : pwd()
+const FILE_PATH = [joinpath(pkgdir, "html")]
+
 function resolve(cmd::JusCmd, vars, str)
     if str == "?"
         ID(cmd)
@@ -248,6 +252,21 @@ function mime_type(filename::AbstractString)
     end
 end
 
+add_file_dir(dirname) = push!(FILE_PATH, realpath(dirname))
+
+function find_file(path)
+    for dir in FILE_PATH
+        dpath = joinpath(dir, path)
+        println("TRYING PATH $dpath")
+        if isdir(dpath)
+            return :directory, dpath
+        elseif isfile(dpath)
+            return :file, dpath
+        end
+    end
+    return :missing, path
+end
+
 """
     serve_file
 
@@ -256,7 +275,7 @@ enhanced to handle mime types
 """
 function serve_file(req::HTTP.Request)
     ## If it's not a path inside the jail (current working directory), return a 403.
-    jail = realpath(pwd())
+    jail = realpath(FILE_PATH[1])
     # println( "Jail path: ", jail )
         
     ## Convert the request path to a real path (remove symlinks, remove . and ..)
@@ -267,30 +286,31 @@ function serve_file(req::HTTP.Request)
     target = replace(req.target, r"^([^?]*)\?.*"=> s"\1")
     @assert length(target) > 0 && target[1] == '/'
     ## Drop the leading "/".
-    request_path = normpath(target[2:end])
+    request_path = normpath(joinpath(jail, target[2:end]))
     ## Convert it to a relative path.
     relative_path = relpath(request_path, jail)
     println("Requested path: ", request_path)
+    println("Relative path: ", relative_path)
     ## Return forbidden if the request is above the current working directory.
-    if length(relative_path) > 0 && splitpath(relative_path)[1] == ".."
+    length(relative_path) > 0 && splitpath(relative_path)[1] == ".." &&
         @show return HTTP.Response(403)
+    type, filepath = find_file(relative_path)
     ## Return not implemented if the request is for a directory.
-    ## TODO: If it's a directory, return a file listing.
-    elseif isdir(relative_path)
+    if type == :directory
         ## Is there an index.html?
-        index = joinpath(relative_path, "index.html")
+        index = joinpath(filepath, "index.html")
         if isfile(index)
             HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read(index))
         else
-            @show return HTTP.Response(501)
+            @show HTTP.Response(501)
         end
         ## Return the contents for a file.
-    elseif isfile(relative_path)
-        return HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read( relative_path))
+    elseif type == :file
+        HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read(filepath))
     else
-        @show return HTTP.Response(404)
+        ## If it's not a file, return a 404.
+        @show HTTP.Response(404)
     end
-    ## If it's not a file, return a 404.
 end
 
 function server(config::Config)

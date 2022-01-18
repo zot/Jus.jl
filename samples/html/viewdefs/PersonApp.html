@@ -1,0 +1,34 @@
+<div class='flex flex-col items-center w-100'>
+  <div data-class-toggle='hide_editor:class=hidden'>
+    <div class='flex flex-row items-center'>
+      <fast-text-field appearance='filled' data-value='namefield()'>Name</fast-text-field>
+      <div class='w-12 inline-block whitespace-nowrap'>ID: <span data-text='id:path=selected_person() id,access=r'></span></div>
+      <fast-text-field appearance='filled' data-value='addressfield()'>Address</fast-text-field>
+    </div>
+    <div>
+      <div data-tooltip='new_person_tooltip' style='display: inline-block'>
+        <fast-button
+          appearance='primary'
+          data-click='new_person()'
+          data-enabled='new_person_enabled'>Add</fast-button>
+      </div>
+      <div style='display: inline-block'>
+        <fast-button appearance='primary' data-click='change_person()' data-enabled='editing_enabled'>Change</fast-button>
+      </div>
+      <div style='display: inline-block'>
+        <fast-button appearance='primary' data-click='delete_person()' data-enabled='editing_enabled'>Delete</fast-button>
+      </div>
+    </div>
+  </div>
+  <div class="relative px-6 pt-10 pb-8 bg-white shadow-xl ring-1 ring-gray-900/5 sm:max-w-lg sm:mx-auto sm:rounded-lg sm:px-10 self-stretch w-80">
+    <div class="max-w-md mx-auto">
+      <label id='people' class='font-bold'>People</label>
+      <fast-listbox
+        id="basic"
+        aria-labeledby='people'
+        data-list='people()'
+        data-on-selected='person_index():defaults,get=selectedIndex,set=setSelectedOptions'
+        data-namespace='list'></fast-listbox>
+    </div>
+  </div>
+</div>
