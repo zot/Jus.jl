@@ -2,7 +2,7 @@ import '@material/mwc-list';
 import '@material/mwc-button';
 import '@material/mwc-textfield';
 import '@material/mwc-circular-progress';
-import {Var, Env} from './vars.mjs';
+import {Var, Env} from '../js/vars.mjs';
 
 const $ = (sel)=> document.querySelector(sel)
 

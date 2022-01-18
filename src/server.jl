@@ -264,9 +264,10 @@ function serve_file(req::HTTP.Request)
     ##         We can't use it, since we don't know if the requested path exists.
     ##         We'll use normpath() instead.
     ## Requests start with "/" referring to the server as the root.
-    @assert length(req.target) > 0 && req.target[1] == '/'
+    target = replace(req.target, r"^([^?]*)\?.*"=> s"\1")
+    @assert length(target) > 0 && target[1] == '/'
     ## Drop the leading "/".
-    request_path = normpath(req.target[2:end])
+    request_path = normpath(target[2:end])
     ## Convert it to a relative path.
     relative_path = relpath(request_path, jail)
     println("Requested path: ", request_path)
@@ -279,13 +280,13 @@ function serve_file(req::HTTP.Request)
         ## Is there an index.html?
         index = joinpath(relative_path, "index.html")
         if isfile(index)
-            HTTP.Response(200, ["Content-Type" => mime_type(req.target)], body = read(index))
+            HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read(index))
         else
             @show return HTTP.Response(501)
         end
         ## Return the contents for a file.
     elseif isfile(relative_path)
-        return HTTP.Response(200, ["Content-Type" => mime_type(req.target)], body = read( relative_path))
+        return HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read( relative_path))
     else
         @show return HTTP.Response(404)
     end
