@@ -54,6 +54,8 @@ A variable:
     action::Bool = false
     path::Vector{Union{Number, Symbol, Function}} = []
     json_value = nothing
+    refresh_exception = nothing
+    error_count = 0
 end
 
 @kwdef mutable struct Namespace
@@ -71,6 +73,8 @@ end
     oid2data::Dict{Int, WeakRef} = Dict()
     data2oid::WeakKeyDict{Any, Int} = WeakKeyDict()
     nextOid::Int = 0
+    refresh_queued::Bool = false
+    pending_result::NamedTuple = (;)
 end
 
 """
@@ -189,10 +193,10 @@ Error while executing a command
 - msg: description of the problem
 - cause: cause of the problem (if any)
 """
-struct CmdException <: Exception
+struct CmdException{T} <: Exception
     type::Symbol
     cmd::VarCommand
     msg::AbstractString
     cause::Exception
-    CmdException(type, cmd, msg, cause = NoCause()) = new(type, cmd, msg, cause)
+    CmdException(type, cmd, msg, cause = NoCause()) = new{type}(type, cmd, msg, cause)
 end

@@ -2,7 +2,7 @@ using Match
 
 import Base.Iterators.flatten
 
-export exec, serve, input, output, set_metadata
+export exec, serve, input, output, set_metadata, Config, present
 
 verbose = false
 
@@ -19,6 +19,7 @@ NAMESPACE is this jus instance's namespace
             the server creates it and associates SECRET with it.
 -i DIR      include dir to the http server file path
 -e EXPR     evaluate Julia expression
+-b TYPE     open browser on TYPE
 -v          verbose
 
 COMMANDS
@@ -117,12 +118,12 @@ function client(config::Config)
 end
 
 function exec(serverfunc, args::Vector{String}; config = Config())
-    if length(args) === 0 || match(r"^-.*$", args[1]) !== nothing
-        usage()
-    end # name required -- only one instance per name allowed
+    local browse = ""
+
+    # name required -- only one instance per name allowed
+    (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && usage()
     config.serverfunc = serverfunc
     config.namespace = args[1]
-    requirements = []
     i = 2
     while i <= length(args)
         @match args[i] begin
@@ -130,9 +131,8 @@ function exec(serverfunc, args::Vector{String}; config = Config())
             "-i" => add_file_dir(args[i += 1])
             "-v" => (config.verbose = true)
             "-x" => (config.secret = args[i += 1])
-            "-c" => begin
-                parseAddr(config, args[i += 1])
-            end
+            "-c" => parseAddr(config, args[i += 1])
+            "-b" => (browse = args[i += 1])
             "-s" => begin
                 parseAddr(config, args[i += 1])
                 config.server = true
@@ -147,8 +147,15 @@ function exec(serverfunc, args::Vector{String}; config = Config())
         i += 1
     end
     atexit(()-> shutdown(config))
+    config.server && browse != "" && present(config, browse)
     (config.server ? server : client)(config)
     config
+end
+
+present(config::Config, type::Type) = present(config, "$(Base.parentmodule(type)).$type")
+function present(config::Config, type::String)
+    host = config.host == "0.0.0.0" ? "localhost" : config.host
+    @async DefaultApplication.open("http://$host:$(config.port)/shell.html?@/0:create=$type")
 end
 
 changed(cfg::Config, var::Var) = get!(()-> Dict(), cfg.changes, var.id)[:set] = true

@@ -29,6 +29,7 @@ sort_people(app::PersonApp) =
     app.sorted_people = sort([values(app.people)...], by = p-> lowercase(p.name))
 
 function selected_person(app::PersonApp)
+    app.selected_person == 0 && return nothing
     app.sorted_people[findfirst(p-> p.id == app.selected_person, app.sorted_people)]
 end
 

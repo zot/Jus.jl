@@ -85,7 +85,7 @@ export class View {
       if (m[2]) varName += `,${m[2]}`
       if (m[3]) varName += `,${m[3]}`
     }
-    return await this.env.createVar(varName, this.rootVar, true);
+    return await this.env.createVar(varName, this.rootVar);
   }
 
   async scanAttr(el, attr, defaults, action) {
@@ -143,7 +143,7 @@ export class View {
         view.var.delete();
       }
       for (; oldLen < newLen; oldLen++) { // the list grew
-        let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v, true);
+        let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v);
         let view = await this.env.present(newVar, node.getAttribute('data-namespace'), this);
 
         views.push(view);

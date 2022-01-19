@@ -1,8 +1,7 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
-- [ ] switch to fast components (it has a tree view):
-      https://www.fast.design/docs/components/getting-started/
+- [ ] make a `present` Julia function that opens a browser, plus a cmd line option to invoke it
 - [ ] naked objects for types that have no vewidef
   - [ ] make the server replace 'viewdef=auto' with a computed viewdef
   - [ ] use methodswith to find methods that take a VarCmd{:set} and the datatype:
@@ -11,7 +10,8 @@ Active varibles that bind to vanilla Julia code -- no need to implement the obse
 - [ ] merge result and update into one object (pass result to finish_command)
   - process in result, update order but only return from promise after both
 - [ ] floating editor mode (1 or 2 additional views for PersonApp)
-
+- [X] switch to fast components (it has a tree view):
+      https://www.fast.design/docs/components/getting-started/
 - [X] use [material web components for widgets](https://github.com/material-components/material-web)
 - [X] take out mwc- references from generic codebase
   - [X] support extension so mwc- can work and put mwc extension in samples

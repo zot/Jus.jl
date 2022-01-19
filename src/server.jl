@@ -100,7 +100,7 @@ function command(cmd::JusCmd{:set})
             end
             pos += 1
         end
-        output(cmd.ws, result = map(v-> json(cmd, v.id), new))
+        output(cmd, result = map(v-> json(cmd, v.id), new))
     end
 end
 
@@ -111,7 +111,7 @@ function command(cmd::JusCmd{:get})
         var, _ = findvar(cmd, false, vars, path)
         push!(vars, var)
     end
-    output(cmd.ws, result = [flatten(map(v-> (json(cmd, v.id), json(cmd, v.value)), vars))...])
+    output(cmd, result = [flatten(map(v-> (json(cmd, v.id), json(cmd, v.value)), vars))...])
 end
 
 function command(cmd::JusCmd{:observe})
@@ -129,25 +129,47 @@ function command(cmd::JusCmd{:observe})
         var = cmd.config[id]
         route(var.value, VarCommand(cmd, :observe, (), var))
     end
-    output(cmd.ws, result = [])
-    output(cmd.ws, update = Dict(json(cmd, vid) => (
-        set = json(cmd, cmd.config[vid].value),
-        metadata = cmd.config[vid].metadata
-    ) for vid in connection(cmd).observing))
+    output(cmd,
+           result = [],
+           update = Dict(json(cmd, vid) => (
+               set = json(cmd, cmd.config[vid].value),
+               metadata = cmd.config[vid].metadata
+           ) for vid in connection(cmd).observing))
+end
+
+function output(cmd::JusCmd; data...)
+    con = connection(cmd)
+    con.pending_result = merge(con.pending_result, (; data...))
 end
 
 function finish_command(cmd::JusCmd)
-    refresh(cmd)
-    observe(cmd.config)
+    con = connection(cmd)
+    println("PENDING RESULT: $(con.pending_result)")
+    if haskey(con.pending_result, :result)
+        refresh(cmd)
+        observe(cmd)
+        con.refresh_queued = false
+    elseif !con.refresh_queued
+        con.refresh_queued = true
+        @async begin
+            sleep(0.2)
+            #this could have been preempted by a command
+            if con.refresh_queued
+                refresh(cmd)
+                observe(cmd)
+                con.refresh_queued = false
+            end
+        end
+    end
 end
 
-function observe(config::Config)
-    isempty(config.changes) && return
+function observe(cmd::JusCmd)
+    config = cmd.config
+    isempty(config.changes) && return send_output(connection(cmd))
     for (_, connection) in config.connections
         @debug("CHECKING CONNECTION OBSERVING: $(repr(connection.observing))")
         changes = filter(e-> within(config, e[1], connection.observing), config.changes)
         if !isempty(changes)
-            #println("@@@@@@ CHANGES FOR UPDATING: $(changes)")
             fmt = Dict()
             for (id, c) in changes
                 var = config[id]
@@ -155,16 +177,22 @@ function observe(config::Config)
                     c[:set] = json(config, connection, var.value)
                 end
                 if haskey(c, :metadata)
-                    #println("ADDING METADATA $(var.metadata)")
                     c[:metadata] = Dict(m => var.metadata[m] for m in c[:metadata])
                 end
                 fmt[json(connection, id)] = Dict{Symbol, Any}(c...)
             end
-            #println("@@@@@@@@ UPATE: $(fmt)")
-            output(connection.ws, update = fmt)
+            output(cmd, update = fmt)
         end
+        send_output(connection)
     end
     config.changes = Dict()
+end
+
+function send_output(con::Connection)
+    if con.pending_result != (;)
+        output(con.ws, con.pending_result)
+        con.pending_result = (;)
+    end
 end
 
 function refresh(cmd::JusCmd)
@@ -172,7 +200,7 @@ function refresh(cmd::JusCmd)
         try
             v.parent == EMPTYID && refresh(cmd, v)
         catch err
-            @error "Error refreshing", err
+            @error "Error refreshing" exception=(err, catch_backtrace())
         end
     end
 end
@@ -182,8 +210,15 @@ function refresh(cmd::JusCmd, var::Var)
         parent = parent_value(cmd.config, var)
         if parent !== nothing
             old = var.json_value
-            route(parent, VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd)))
-            old !== var.json_value && changed(cmd.config, var)
+            var.refresh_exception = nothing
+            try
+                route(parent, VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd)))
+                old !== var.json_value && changed(cmd.config, var)
+            catch err
+                var.refresh_exception = err
+                var.error_count += 1
+                refresh_error(var, err, catch_backtrace())
+            end
         end
     end
     for (_, v) in var.namedchildren
@@ -193,6 +228,14 @@ function refresh(cmd::JusCmd, var::Var)
         refresh(cmd, v)
     end
 end
+
+"""
+    refresh_error
+
+Handle errors during refresh. Log path errors at the debug level.
+"""
+refresh_error(var::Var, ex::CmdException{:path}, bt) = @debug "Error refreshing variable $(var)" exception=(ex, bt)
+refresh_error(var::Var, ex, bt) = @error "Error refreshing variable $(var)" exception=(ex, bt)
 
 function serve(config::Config, ws)
     (; namespace, secret) = input(ws)

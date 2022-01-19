@@ -64,9 +64,9 @@ export class Jus {
     const obj = JSON.parse(msg.data);
 
     console.log("RECEIVED MESSAGE:", obj);
-    if ('result' in obj) this.handlers.shift()[0](obj.result);
-    else if ('error' in obj) this.handlers.shift()[1](obj.error);
-    else if ('update' in obj) this.update(obj.update);
+    if ('error' in obj) this.handlers.shift()[1](obj.error);
+    else if ('result' in obj) this.handlers.shift()[0](obj.result);
+    if ('update' in obj) setTimeout(()=> this.update(obj.update))
   }
 
   ondisconnect(func) {

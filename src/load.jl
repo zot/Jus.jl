@@ -7,9 +7,9 @@ using Match
 using HTTP
 using Generators
 using Pkg
+using DefaultApplication
 
-import Base.@kwdef
-import Base.Iterators.flatten
+import Base.@kwdef, Base.Iterators.flatten
 
 include("types.jl")
 include("vars.jl")

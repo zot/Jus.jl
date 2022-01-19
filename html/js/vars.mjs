@@ -34,7 +34,7 @@ export class Var {
 
           pathParts.pop();
           pathParts.push(tmpName);
-          name = pathParts.join(" ")
+          name = pathParts.join(' ')
           if (nameParts[2]) {
             name += nameParts[2]
           }
@@ -53,7 +53,7 @@ export class Var {
   parseMetadata(name) {
     let m = name.match(FULL_NAME);
 
-    this.name = m[1] == "@/0" ? "" : m[1];
+    this.name = m[1] == '@/0' ? '' : m[1];
     if (!m[2]) return;
     for (m = m[3].match(META_PROPERTY); m && m[1]; m = (m[3] || '').match(META_PROPERTY)) {
       this.metadata[m[1]] = (m[2] || '');
@@ -63,8 +63,8 @@ export class Var {
   observe(func) {this.observers.push(func);}
 
   update(info) {
-    if ("set" in info) this.value = info.set;
-    if ("metadata" in info) {
+    if ('set' in info) this.value = info.set;
+    if ('metadata' in info) {
       for (const k of Object.keys(info.metadata)) {
         this.metadata[k] = info.metadata[k];
       }
@@ -125,7 +125,7 @@ export class Env {
     varPath += v.name || nameParts[1]
     if (Object.keys(v.metadata).length) varPath += `:${v.metadataString()}`
     console.log('CREATING', v);
-    await this.jus.set('-c', varPath, 'true');
+    await this.jus.set('-c', varPath, null);
     return v;
   }
 

@@ -158,7 +158,7 @@ end
 
 function set_type(cmd::VarCommand)
     type = typeof(cmd.var.internal_value)
-    typename = "$(type)"
+    typename = "$(Base.parentmodule(type)).$type"
     if typename != get(cmd.var.metadata, :type, "")
         set_metadata(cmd, :type, typename)
     end
@@ -191,7 +191,7 @@ function set_path_from_metadata(cmd::VarCommand)
             try
                 push!(path, Main.eval(Meta.parse(m[1] * m[2])))
             catch err
-                throw(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
+                rethrow(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
             end
         elseif match(ARRAY_INDEX, m[1]) !== nothing
             push!(path, parse(Int, m[1]))
@@ -213,28 +213,28 @@ function basic_get_path(cmd::VarCommand, path)
             try
                 cur = getfield(cur, el)
             catch err
-                throw(CmdException(:path, cmd, "error getting field $(el)", err))
+                rethrow(CmdException(:path, cmd, "error getting field $(el) in path $path", err))
             end
         elseif el isa Number
             try
                 cur = getindex(cur, el)
             catch err
-                throw(CmdException(:path, cmd, "error getting field $(el)", err))
+                rethrow(CmdException(:path, cmd, "error getting field $(el) in path $path", err))
             end
         elseif hasmethod(el, typeof.((cmd, cur)))
             try
                 cur = el(cmd, cur)
             catch err
-                throw(CmdException(:program, cmd, "error calling getter function $(el)", err))
+                rethrow(CmdException(:program, cmd, "error calling getter function $(el) in path $path", err))
             end
         elseif hasmethod(el, typeof.((cur,)))
             try
                 cur = el(cur)
             catch err
-                throw(CmdException(:program, cmd, "error calling getter function $(el)", err))
+                rethrow(CmdException(:program, cmd, "error calling getter function $(el) in path $path", err))
             end
         else
-            throw(CmdException(:path, cmd, "No getter method $(el) for $(typeof.((cur,)))"))
+            throw(CmdException(:program, cmd, "No getter method $(el) for $(typeof.((cur,)))  in path $path"))
         end
     end
     cur
@@ -251,7 +251,7 @@ function set_path(cmd::VarCommand)
         try
             cur = setfield!(cur, el, cmd.arg)
         catch err
-            throw(CmdException(:path, cmd, "error setting $(cmd.var.id) field $(el)", err))
+            rethrow(CmdException(:path, cmd, "error setting $(cmd.var.id) field $(el)", err))
         end
     elseif cmd.var.action
         if hasmethod(el, typeof.((cmd, cur)))
