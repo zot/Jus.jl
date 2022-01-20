@@ -6,7 +6,7 @@ if [ "$1" = -r ]; then
         echo SYSIMAGE: "$DIR/jus.so"
         exec julia -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/rmain.jl" "$@"
     else
-        exec julia ${IMG:-} "--project=$DIR" "$DIR/src/rmain.jl" "$@"
+        exec julia "--project=$DIR" "$DIR/src/rmain.jl" "$@"
     fi
 else
     if [ -e "$DIR/jus.so" ]; then

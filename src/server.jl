@@ -71,37 +71,50 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
 end
 
 function command(cmd::JusCmd{:set})
-    let new = [], vars = [], creating, metadata
-        function newset()
-            creating = false
-            metadata = Dict{Symbol, AbstractString}()
-        end
-        @debug("@ SET (FRED 6): $(cmd.args)")
-        pos = 1
-        newset()
-        while pos <= length(cmd.args)
-            @match cmd.args[pos] begin
-                "-c" => (creating = true)
-                "-m" => begin
-                    metadata[cmd.args[pos + 1]] = metadata[pos + 2]
-                    pos += 2
-                end
-                unknown => begin
-                    value = cmd.args[pos + 1]
-                    var, creating = findvar(cmd, creating, vars, cmd.args[pos], metadata, value)
-                    @debug("FOUND VARIABLE: $(var)")
-                    creating && push!(new, var)
-                    parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
-                    route(parentvalue, VarCommand(cmd, :set, (), var; arg = creating ? var.value : value, creating))
-                    !cmd.cancel && push!(vars, var)
-                    newset()
-                    pos += 1
+    local new = []
+    local vars = []
+    local creating
+    local metadata
+    function newset()
+        creating = false
+        metadata = Dict{Symbol, AbstractString}()
+    end
+
+    @debug("@ SET (FRED 6): $(cmd.args)")
+    pos = 1
+    newset()
+    while pos <= length(cmd.args)
+        arg = cmd.args[pos]
+        if arg == "-c"
+            creating = true
+        elseif arg == "-m"
+            metadata[cmd.args[pos + 1]] = metadata[pos + 2]
+            pos += 2
+        else
+            value = cmd.args[pos + 1]
+            var, creating = findvar(cmd, creating, vars, cmd.args[pos], metadata, value)
+            @debug("FOUND VARIABLE: $(var)")
+            creating && push!(new, var)
+            parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
+            try
+                pval = var.parent != EMPTYID ? parent_value(cmd.config, var) : nothing
+                println("%%%\n%%% SETTING VARIABLE ($(pval)).$(var) FROM $(var.internal_value) TO $(value)")
+                route(parentvalue, VarCommand(cmd, :set, (), var; arg = creating ? var.value : value, creating))
+            catch err
+                if err isa CmdException && err.type == :path
+                    @debug "Error refreshing variable $(var)" exception=(err, catch_backtrace())
+                    cmd.cancel = true
+                else
+                    rethrow(err)
                 end
             end
+            !cmd.cancel && push!(vars, var)
+            newset()
             pos += 1
         end
-        output(cmd, result = map(v-> json(cmd, v.id), new))
+        pos += 1
     end
+    output(cmd, result = map(v-> json(cmd, v.id), new))
 end
 
 function command(cmd::JusCmd{:get})
@@ -152,12 +165,16 @@ function finish_command(cmd::JusCmd)
     elseif !con.refresh_queued
         con.refresh_queued = true
         @async begin
-            sleep(0.2)
-            #this could have been preempted by a command
-            if con.refresh_queued
-                refresh(cmd)
-                observe(cmd)
-                con.refresh_queued = false
+            try
+                sleep(0.2)
+                #this could have been preempted by a command
+                if con.refresh_queued
+                    refresh(cmd)
+                    observe(cmd)
+                    con.refresh_queued = false
+                end
+            catch err
+                exit(1)
             end
         end
     end
@@ -248,7 +265,9 @@ function serve(config::Config, ws)
     else
         config.namespaces[namespace] = Namespace(; name=namespace, secret)
     end
-    config.connections[ws] = Connection(; ws, namespace)
+    con = Connection(; ws, namespace)
+    config.connections[ws] = con
+    config.init_connection(con)
     @debug("Connection for $(namespace)")
     while !eof(ws)
         string="unknown"
@@ -263,15 +282,23 @@ function serve(config::Config, ws)
         catch err
             if !(err isa Base.IOError || err isa HTTP.WebSockets.WebSocketError)
                 err isa ArgumentError && println(err)
-                @error join(["Error handling comand $(String(string)) $(err)", stacktrace(catch_backtrace())...], "\n")
+                @error "Error handling comand $(String(string)) $(err)" exception=(err, catch_backtrace())
             end
             break
         end
     end
-    close(ws)
+    close(config, con)
     put!(config.connections[ws].stop, true)
-    delete!(config.connections, ws)
     @debug("CLIENT CLOSED: $(repr(namespace))")
+end
+
+function close(config::Config, con::Connection)
+    Base.close(con.ws)
+    for v in con.vars
+        delete!(config.vars, v.id)
+        delete!(config.changes, v.id)
+    end
+    delete!(config.connections, con.ws)
 end
 
 const FILE_EXT_PAT = r"^(.*)\.([^.]*)$"
@@ -356,13 +383,9 @@ function serve_file(req::HTTP.Request)
     end
 end
 
-function server(config::Config)
+function server(config::Config, socket = nothing)
     router = HTTP.Router()
-
-    println("SERVER ON $(config.host):$(config.port)")
-    HTTP.@register(router, "GET", "/ws", r-> serve_websocket(config, r))
-    HTTP.@register(router, "GET", "/", serve_file)
-    HTTP.listen(config.host, config.port) do http
+    function handle_request(http)
         if http.message.target == "/ws"
             HTTP.WebSockets.upgrade(http) do ws
                 config.serverfunc(config, ws)
@@ -370,6 +393,15 @@ function server(config::Config)
         else
             HTTP.handle(router, http)
         end
+    end
+
+    println("SERVER ON $(config.host):$(config.port)")
+    HTTP.@register(router, "GET", "/ws", r-> serve_websocket(config, r))
+    HTTP.@register(router, "GET", "/", serve_file)
+    if socket === nothing
+        HTTP.listen(handle_request, config.host, config.port)
+    else
+        HTTP.listen(handle_request; server=socket)
     end
     @debug("HTTP SERVER FINISHED")
 end

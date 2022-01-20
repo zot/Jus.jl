@@ -1,8 +1,24 @@
-using Match
+module Jus
 
+using Match
+using JSON3
+using JSON3: StructTypes
+using Base.Filesystem
+using Match
+using HTTP
+using Generators
+using Pkg
+using DefaultApplication
+using Sockets
+
+import Base.@kwdef, Base.Iterators.flatten
 import Base.Iterators.flatten
 
-export exec, serve, input, output, set_metadata, Config, present
+include("types.jl")
+include("vars.jl")
+include("server.jl")
+
+export exec, serve, input, output, set_metadata, Config, present, start
 
 verbose = false
 
@@ -152,10 +168,57 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     config
 end
 
+"""
+    start(port = 0, host = "0.0.0.0", type = Nothing)
+
+Starts Jus in a new task on host and port (port 0 means pick a random port)
+and, if given a type, opens a browser page editing the type.
+
+Returns the config.
+"""
+function start(data = nothing; port = 0, host = nothing, dirs=[], async=true)
+    for dir in dirs
+        add_file_dir(dir)
+    end
+    config = Config()
+    port, socket = host === nothing ? Sockets.listenany(port) : Sockets.listenany(IPv4(host), port)
+    config.port = port
+    config.host = getsockname(socket)[1]
+    println("HOST: $(config.host)")
+    data !== Nothing && present(config, data)
+    if async
+        @async server(config, socket)
+    else
+        server(config, socket)
+    end
+    config
+end
+
+function present(config::Config, data)
+    var = addvar(config, data)
+    #make the connection track the variable so it cleans up on disconnect
+    config.init_connection = con-> addvar(con, var)
+    host = config.host == "0.0.0.0" ? "localhost" : config.host
+    @async begin
+        try
+            sleep(0.5)
+            DefaultApplication.open("http://$host:$(config.port)/shell.html?$(var.id)")
+        catch err
+            exit(1)
+        end
+    end
+end
 present(config::Config, type::Type) = present(config, "$(Base.parentmodule(type)).$type")
 function present(config::Config, type::String)
     host = config.host == "0.0.0.0" ? "localhost" : config.host
-    @async DefaultApplication.open("http://$host:$(config.port)/shell.html?@/0:create=$type")
+    @async begin
+        try
+            sleep(0.5)
+            DefaultApplication.open("http://$host:$(config.port)/shell.html?@/0:create=$type")
+        catch err
+            exit(1)
+        end
+    end
 end
 
 changed(cfg::Config, var::Var) = get!(()-> Dict(), cfg.changes, var.id)[:set] = true
@@ -326,3 +389,5 @@ default_handle(value, cmd::VarCommand{:observe}) = nothing
 default_handle(value, cmd::VarCommand{:create}) = nothing
 
 transform(parent_var::Var, parent, cmd::VarCommand) = cmd.var.internal_value
+
+end

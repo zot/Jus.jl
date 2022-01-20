@@ -30,7 +30,7 @@ export class Jus {
   }
   
   simpleCmd(cmd) {
-    console.log('SENDING MESSAGE', cmd);
+    console.log('>>> SENDING MESSAGE', cmd);
     return new Promise((accept, reject)=> {
       this.handlers.push([accept, reject]);
       this.ws.send(JSON.stringify(cmd));
@@ -63,7 +63,7 @@ export class Jus {
   async handleMessage(msg) {
     const obj = JSON.parse(msg.data);
 
-    console.log("RECEIVED MESSAGE:", obj);
+    console.log("<<< RECEIVED MESSAGE:", obj);
     if ('error' in obj) this.handlers.shift()[1](obj.error);
     else if ('result' in obj) this.handlers.shift()[0](obj.result);
     if ('update' in obj) setTimeout(()=> this.update(obj.update))

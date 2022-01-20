@@ -75,6 +75,8 @@ end
     nextOid::Int = 0
     refresh_queued::Bool = false
     pending_result::NamedTuple = (;)
+    vars::Set{Var} = Set{Var}()
+    requests::Set = Set()
 end
 
 """
@@ -86,28 +88,70 @@ Singleton for this program's state.
     vars: all known variables
     changes: pending changes to the state to be broadcast to observers
 """
-@kwdef mutable struct Config
-    namespace = ""
-    vars::Dict{ID, Var} = Dict()
-    host = "0.0.0.0"
-    port = UInt16(8181)
-    server = false
-    diag = false
-    proxy = false
-    verbose::Bool = false
-    cmd = ""
-    args = String[]
-    client = ""
-    pending::Dict{Int, Function} = Dict()
-    nextmsg = 0
-    namespaces::Dict{String, Namespace} = Dict() # namespaces and their secrets
-    secret::String = ""
-    serverfunc = (cfg, ws)-> nothing
-    connections::Dict{Any, Connection} = Dict()
-    changes::Dict{ID, Dict{Symbol, Any}} = Dict()
+mutable struct Config
+    namespace::Namespace
+    vars::Dict{ID, Var}
+    host::Sockets.IPv4
+    port::UInt16
+    server::Bool
+    diag::Bool
+    proxy::Bool
+    verbose::Bool
+    cmd::AbstractString
+    args::Vector{AbstractString}
+    client::AbstractString
+    nextmsg::Int
+    namespaces::Dict{AbstractString, Namespace}
+    secret::AbstractString
+    serverfunc::Function
+    connections::Dict{Any, Connection}
+    changes::Dict{ID, Dict{Symbol, Any}}
+    init_connection::Function
+    function Config(;
+                    namespace::Namespace = Namespace("ROOT", "", 0),
+                    vars::Dict{ID, Var} = Dict{ID, Var}(),
+                    host::IPv4 = ip"0.0.0.0",
+                    port::UInt16 = UInt16(8181),
+                    server::Bool = false,
+                    diag::Bool = false,
+                    proxy::Bool = false,
+                    verbose::Bool = false,
+                    cmd::AbstractString = "",
+                    args::Vector{T} = String[],
+                    client::AbstractString = "",
+                    nextmsg::Int = 0,
+                    namespaces::Dict{AbstractString, Namespace} = Dict{AbstractString, Namespace}(), # namespaces and their secrets
+                    secret::AbstractString = "",
+                    serverfunc::Function = serve,
+                    connections::Dict{Any, Connection} = Dict{Any, Connection}(),
+                    changes::Dict{ID, Dict{Symbol, Any}} = Dict{ID, Dict{Symbol, Any}}(),
+                    init_connection::Function = con-> (),
+                    ) where {T <: AbstractString}
+        namespaces[namespace.name] = namespace
+        new(
+            namespace,
+            vars,
+            host,
+            port,
+            server,
+            diag,
+            proxy,
+            verbose,
+            cmd,
+            args,
+            client,
+            nextmsg,
+            namespaces,
+            secret,
+            serverfunc,
+            connections,
+            changes,
+            init_connection,
+        )
+    end
 end
 
-@kwdef struct JusCmd{NAME}
+@kwdef mutable struct JusCmd{NAME}
     config::Config
     ws #::HTTP.WebSockets.WebSocket
     namespace::AbstractString
@@ -117,7 +161,7 @@ end
         new{Symbol(lowercase(args[1]))}(config, ws, namespace, args[2:end], false)
 end
 
-connection(cmd::JusCmd) = cmd.config.connections[cmd.ws]
+connection(cmd::JusCmd) = get(cmd.config.connections, cmd.ws, nothing)
 
 ID(cmd::JusCmd{T}) where T = ID(cmd.namespace, UInt(0))
 
@@ -137,7 +181,7 @@ Observe: observe variables
 @kwdef mutable struct VarCommand{Cmd, Arg}
     var::Var
     config::Config
-    connection::Connection
+    connection::Union{Connection, Nothing}
     cancel::Bool = false
     creating::Bool = false
     arg = nothing
@@ -175,6 +219,8 @@ end
 parent(cmd::VarCommand) = VarCommand(cmd; var = parent_var(cmd))
 
 Base.show(io::IO, cmd::VarCommand{Cmd, Path}) where {Cmd, Path} = print(io, "VarCommand{$(repr(Cmd)), $(Path)}($(cmd.creating ? "creating" : "not creating"))")
+
+Base.show(io::IO, var::Var) = print(io, "Var($(var.parent), $(var.id), $(var.name), $(var.path))")
 
 struct NoCause <: Exception end
 

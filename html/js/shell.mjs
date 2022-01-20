@@ -11,9 +11,13 @@ export class Shell {
     this.env = new Env();
     this.namespace = crypto.randomUUID();
     this.secret = crypto.randomUUID();
-    await this.env.connect('localhost:7777', this.namespace, this.secret);
+    await this.env.connect(location.host, this.namespace, this.secret);
     console.log("JUS IS READY");
-    this.root = await this.env.createVar(vardef)
+    if (vardef.startsWith('@')) {
+      this.root = await this.env.createVar(vardef)
+    } else {
+      this.root = this.env.addVar(vardef)
+    }
     console.log(`CREATED ROOT: ${this.root}`);
     await this.env.observe(this.root);
     console.log(`OBSERVING ROOT`, this.root);

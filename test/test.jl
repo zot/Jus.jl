@@ -5,7 +5,7 @@ using HTTP
 using Logging
 
 config = Config()
-config.namespace = "Test"
+config.namespace = Namespace("Test", "", 0)
 
 @kwdef mutable struct FakeWS
     isopen = true

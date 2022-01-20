@@ -1,7 +1,5 @@
 println("EXAMPLE")
 
-using .Jus
-
 import Base.@kwdef
 
 @kwdef mutable struct Person
@@ -75,6 +73,7 @@ function namefield(app::PersonApp, value)
 end
 
 function check_fields(app::PersonApp)
+    println("CHECKING FIELDS OF $app")
     app.new_person_enabled = false
     app.editing_enabled = app.selected_person != 0
     app.new_person_tooltip = ""
