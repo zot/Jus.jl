@@ -29,17 +29,23 @@ export class Jus {
     this.ws.send(JSON.stringify({namespace: this.namespace, secret: this.secret}));
   }
   
-  simpleCmd(cmd) {
-    console.log('>>> SENDING MESSAGE', cmd);
+  simpleCmd(cmd, filter) {
+    console.info(`>>> SENDING MESSAGE ${JSON.stringify(cmd)}`, cmd);
     return new Promise((accept, reject)=> {
-      this.handlers.push([accept, reject]);
+      this.handlers.push({accept , reject, filter: filter || (x=>x)});
       this.ws.send(JSON.stringify(cmd));
     })
   }
 
   async set(...args) {
-    const result = await this.simpleCmd(['set', ...args]);
-    console.log("SET COMMAND RESULT:", result);
+    const result = await this.simpleCmd(['set', ...args], (response)=> {
+      if (args[0] == '-c') return;
+      const [id, value] = args;
+      if (response.update && response.update[id] && 'set' in response.update[id]) return;
+      if (!response.update) response.update = {};
+      if (!response.update[id]) response.update[id] = {};
+      response.update[id].set = value;
+    });
     return result
   }
 
@@ -48,25 +54,21 @@ export class Jus {
   }
 
   async observe(...args) {
-    console.log("SENDING OBSERVE COMMAND")
     const result = await this.simpleCmd(['observe', ...args]);
-    console.log("OBSERVE COMMAND RESULT:", result);
     return result
   }
 
-  update(info) {
-    for (const k of Object.keys(info)) {
-      this.observer(k, info[k]);
-    }
-  }
+  update(info) {this.observer(info) }
 
   async handleMessage(msg) {
     const obj = JSON.parse(msg.data);
+    const handler = this.handlers.shift();
 
-    console.log("<<< RECEIVED MESSAGE:", obj);
-    if ('error' in obj) this.handlers.shift()[1](obj.error);
-    else if ('result' in obj) this.handlers.shift()[0](obj.result);
-    if ('update' in obj) setTimeout(()=> this.update(obj.update))
+    console.info("<<< RECEIVED MESSAGE:", obj);
+    handler.filter(obj);
+    'update' in obj && setTimeout(()=> this.update(obj.update))
+    if ('error' in obj) handler.reject(obj.error);
+    else if ('result' in obj) handler.accept(obj.result, obj);
   }
 
   ondisconnect(func) {

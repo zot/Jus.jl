@@ -116,10 +116,10 @@ end
 input(ws) = JSON3.read(readavailable(ws))
 
 function client(config::Config)
-    if config.secret === "" abort("Secret required") end
+    if config.namespace.secret === "" abort("Secret required") end
     @debug("CLIENT $(config.namespace) connecting to ws//$(config.host):$(config.port)")
     HTTP.WebSockets.open("ws://$(config.host):$(config.port)") do ws
-        output(ws, (namespace = config.namespace, secret = config.secret))
+        output(ws, (namespace = config.namespace, secret = config.namespace.secret))
         output(ws, config.args)
         result = JSON3.read(readavailable(ws)) # read one message
         @debug("RESULT: $(result)")
@@ -139,14 +139,14 @@ function exec(serverfunc, args::Vector{String}; config = Config())
     # name required -- only one instance per name allowed
     (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && usage()
     config.serverfunc = serverfunc
-    config.namespace = args[1]
+    config.namespace.name = args[1]
     i = 2
     while i <= length(args)
         @match args[i] begin
             "-e" => Main.eval(Meta.parse(args[i += 1]))
             "-i" => add_file_dir(args[i += 1])
             "-v" => (config.verbose = true)
-            "-x" => (config.secret = args[i += 1])
+            "-x" => (config.namespace.secret = args[i += 1])
             "-c" => parseAddr(config, args[i += 1])
             "-b" => (browse = args[i += 1])
             "-s" => begin
@@ -184,6 +184,7 @@ function start(data = nothing; port = 0, host = nothing, dirs=[], async=true)
     port, socket = host === nothing ? Sockets.listenany(port) : Sockets.listenany(IPv4(host), port)
     config.port = port
     config.host = getsockname(socket)[1]
+    config.hostname = host
     println("HOST: $(config.host)")
     data !== Nothing && present(config, data)
     if async
@@ -198,11 +199,10 @@ function present(config::Config, data)
     var = addvar(config, data)
     #make the connection track the variable so it cleans up on disconnect
     config.init_connection = con-> addvar(con, var)
-    host = config.host == "0.0.0.0" ? "localhost" : config.host
     @async begin
         try
             sleep(0.5)
-            DefaultApplication.open("http://$host:$(config.port)/shell.html?$(var.id)")
+            DefaultApplication.open("http://$(confit.hostname):$(config.port)/shell.html?$(var.id)")
         catch err
             exit(1)
         end
@@ -210,11 +210,10 @@ function present(config::Config, data)
 end
 present(config::Config, type::Type) = present(config, "$(Base.parentmodule(type)).$type")
 function present(config::Config, type::String)
-    host = config.host == "0.0.0.0" ? "localhost" : config.host
     @async begin
         try
             sleep(0.5)
-            DefaultApplication.open("http://$host:$(config.port)/shell.html?@/0:create=$type")
+            DefaultApplication.open("http://$(config.hostname):$(config.port)/shell.html?@/0:create=$type")
         catch err
             exit(1)
         end
@@ -359,11 +358,13 @@ end
 function default_handle(value, cmd::VarCommand{:set})
     #println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")
     #println("@@@@@@ VAR: $(cmd.var)")
-    if !isempty(cmd.var.path)
+    if isempty(cmd.var.path)
+        cmd.var.internal_value = cmd.var.value = cmd.arg
+        cmd.creating && changed(cmd.config, cmd.var)
+        set_type(cmd)
+    elseif cmd.var.writeable
         println("@@@@@@@@ SET PATH: $(cmd.var.path) OF $(cmd.var)")
         set_path(cmd)
-    else
-        cmd.var.value = cmd.arg
     end
     !cmd.cancel && !cmd.var.action && changed(cmd.config, cmd.var)
 end

@@ -1,13 +1,18 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
-- [ ] make a `present` Julia function that opens a browser, plus a cmd line option to invoke it
+- [ ] fix deleting people in sample app
+- [ ] implement `delete id` that deletes a var and all its children
+- [ ] rename disableSelection to disableUpdates
+- [ ] allow disabling variable observation
 - [ ] naked objects for types that have no vewidef
   - [ ] make the server replace 'viewdef=auto' with a computed viewdef
   - [ ] use methodswith to find methods that take a VarCmd{:set} and the datatype:
         https://docs.julialang.org/en/v1/stdlib/InteractiveUtils/#InteractiveUtils.methodswith
-- [ ] make a separate output task for each connection so that background code can update the front end
 - [ ] floating editor mode (1 or 2 additional views for PersonApp)
+- [X] make a separate output task for each connection so that background code can update the front end
+- [X] make adjustIndex work
+- [X] make a `present` Julia function that opens a browser, plus a cmd line option to invoke it
 - [X] merge result and update into one object (pass result to finish_command)
   - process in result, update order but only return from promise after both
 - [X] switch to fast components (it has a tree view):

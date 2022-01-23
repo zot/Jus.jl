@@ -101,7 +101,6 @@ function parsemetadata(meta::AbstractString, original_meta = nothing)
     end
     while meta !== ""
         (m = match(METAPROP, meta)) === nothing && throw("Bad metaproperty format: $(meta)")
-        #println("@@@@@@ METAPROP $(m[1]) = $(m[2])")
         metadata[Symbol(m[1])] = m[2] === nothing ? "" : m[2]
         length(meta) == length(m.match) && break
         meta[length(m.match)] != ',' && throw("Bad metaproperty format: $(meta)")
@@ -169,9 +168,7 @@ function addvar(cmd::JusCmd, parent::ID, name::Union{Integer, Symbol}, id::ID, v
     v = Var(cmd; id, name = realname, value, metadata, parent)
     metadata[:type] = typename(value)
     changed(cmd.config, v)
-    #println("@@@@@@ VAR $(v.id) METADATA: $(v.metadata)")
     changed(cmd.config, v, keys(v.metadata)...)
-    #println("@@@@@@ VAR $(v.id) CHANGES: $(cmd.config.changes[v.id])")
     cmd.ws !== nothing && addvar(connection(cmd), v)
     v
 end
@@ -200,44 +197,47 @@ function create_from_metadata(cmd::VarCommand)
 end
 
 function set_access_from_metadata(var::Var)
-    println("@@@@ SETTING ACCESS = $(var.metadata[:access]) FOR $(var)")
     var.action = var.metadata[:access] == "action"
     var.readable = var.metadata[:access] in ["rw", "r"]
     var.writeable = var.metadata[:access] in ["rw", "w", "action"]
-    println("@@@@ SETTING ACTION = $(var.action)")
 end
 
 function set_path_from_metadata(cmd::VarCommand)
-    #println("@@@@@@ SETTING PATH FROM METADATA $(cmd.var.metadata[:path])")
     cmd.var.path = []
     path = cmd.var.path
     for el in split(cmd.var.metadata[:path])
-        m = match(JPATH_COMPONENT, el)
-        m === nothing && throw("Bad path component in $(cmd.var): $(el)")
-        #println("@@@@@@ PATH COMPONENT: $(m[1]), $(m[2])")
-        if m[2] !== nothing
-            try
-                push!(path, Main.eval(Meta.parse(m[1] * m[2])))
-            catch err
-                rethrow(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
-            end
-        elseif match(ARRAY_INDEX, m[1]) !== nothing
-            push!(path, parse(Int, m[1]))
+        el == ".." && !isempty(filter(x-> x != :.., path)) &&
+            throw("'..' not allowed in the middle of a path in $(cmd.var): $(el)")
+        if el == ".."
+            push!(path, :..)
         else
-            push!(path, Symbol(m[1]))
+            m = match(JPATH_COMPONENT, el)
+            m === nothing && throw("Bad path component in $(cmd.var): $(el)")
+            if m[2] !== nothing
+                try
+                    push!(path, Main.eval(Meta.parse(m[1] * m[2])))
+                catch err
+                    rethrow(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
+                end
+            elseif match(ARRAY_INDEX, m[1]) !== nothing
+                push!(path, parse(Int, m[1]))
+            else
+                push!(path, Symbol(m[1]))
+            end
         end
-        #println("@@@@@@ PATH COMPONENT VALUE: $(path[end])")
     end
-    #println("@@@@@@ PATH: $(path)")
-    #println("@@@@@@ VAR PATH: $(cmd.var.path)")
 end
 
 function basic_get_path(cmd::VarCommand, path)
-    #println("@@@\n@@@ GETTING PATH")
-    cmd.var.parent == EMPTYID && throw(CmdException(:path, cmd, "no parent"))
-    cur = cmd.config[cmd.var.parent].internal_value
+    var = cmd.var
+    var.parent == EMPTYID && throw(CmdException(:path, cmd, "no parent"))
+    cur = cmd.config[var.parent].internal_value
     for el in path
-        if cur === nothing
+        if el == :..
+            var = cmd.config[var.parent]
+            var.parent == EMPTYID && throw(CmdException(:path, cmd, "error going up in path with no parent"))
+            cur = cmd.config[var.parent].internal_value
+        elseif cur === nothing
             throw(CmdException(:path, cmd, "error getting $(cmd.var) field $(el) in path $path"))
         elseif el isa Symbol
             try
@@ -272,29 +272,43 @@ function basic_get_path(cmd::VarCommand, path)
 end
 
 function set_path(cmd::VarCommand)
-    cmd.creating && return
-    #println("@@@\n@@@ SETTING PATH")
+    cmd.creating && (haskey(cmd.var.metadata, :create) || cmd.var.action || !isempty(cmd.var.path)) && return
     !cmd.var.writeable && throw(CmdException(:writeable_error, cmd, "variable $(cmd.var) is not writeable"))
     cur = basic_get_path(cmd, cmd.var.path[1:end - 1])
     el = cmd.var.path[end]
-    println("SET PATH FOR $(cmd.var)")
-    println("CUR: $cur")
-    println("LAST ELEMENT: $el")
-    println("LAST ELEMENT TYPE: $(typeof(el))")
     if cur === nothing
         throw(CmdException(:path, cmd, "error setting field $(el) in path $(cmd.var.path) for $(cmd.var)"))
     elseif el isa Symbol
         try
-            cur = setfield!(cur, el, cmd.arg)
+            setfield!(cur, el, cmd.arg)
         catch err
             rethrow(CmdException(:path, cmd, "error setting $(cmd.var) field $(el)", err))
         end
+    elseif el isa Number
+        if el == length(cur) + 1
+            push!(cur, cmd.arg)
+        else
+            setindex!(cur, el, cmd.arg)
+        end
     elseif cmd.var.action
-        if hasmethod(el, typeof.((cmd, cur)))
+        parent = cmd.config[cmd.var.parent].internal_value
+        if :.. in cmd.var.path && hasmethod(el, typeof.((cmd, cur, parent)))
+            try
+                el(cmd, cur, parent)
+            catch err
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var) action function $(el) for $(typeof.((cmd, cur, cmd.var.internal_value))): $(err)", err))
+            end
+        elseif hasmethod(el, typeof.((cmd, cur)))
             try
                 el(cmd, cur)
             catch err
-                rethrow(CmdException(:program, cmd, "error calling $(cmd.var) action function $(el) for $(typeof.((cur,))): $(err)", err))
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var) action function $(el) for $(typeof.((cmd, cur,))): $(err)", err))
+            end
+        elseif :.. in cmd.var.path && hasmethod(el, typeof.((cur, parent)))
+            try
+                el(cur, parent)
+            catch err
+                rethrow(CmdException(:program, cmd, "error calling $(cmd.var) action function $(el) for $(typeof.((cur, cmd.var.internal_value))): $(err)", err))
             end
         elseif hasmethod(el, typeof.((cur,)))
             try
@@ -307,20 +321,17 @@ function set_path(cmd::VarCommand)
         end
     elseif hasmethod(el, typeof.((cmd, cur, cmd.arg)))
         try
-            println("@@@@@@@@ CALLING $(el) ON $(cur) WITH COMMAND AND '$(cmd.arg)'")
             el(cmd, cur, cmd.arg)
         catch err
             rethrow(CmdException(:program, cmd, "error calling $(cmd.var) setter function $(el): $(err)", err))
         end
     elseif hasmethod(el, typeof.((cur, cmd.arg)))
         try
-            println("@@@@@@@@ CALLING $(el) ON $(cur) WITH '$(cmd.arg)'")
             el(cur, cmd.arg)
         catch err
             rethrow(CmdException(:program, cmd, "error calling $(cmd.var) setter function $(el): $(err)", err))
         end
     else
-        println("cmd.var.action:", cmd.var.action, ", metadata:", cmd.var.metadata)
         throw(CmdException(:path, cmd, "no $(cmd.var) setter function $(el) for $(typeof.((cur, cmd.arg)))"))
     end
 end

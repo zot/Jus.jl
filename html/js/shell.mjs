@@ -14,14 +14,16 @@ export class Shell {
     await this.env.connect(location.host, this.namespace, this.secret);
     console.log("JUS IS READY");
     if (vardef.startsWith('@')) {
+      if (!vardef.match(/:/)) {
+        vardef += ':observe'
+      } else {
+        vardef += ',observe'
+      }
       this.root = await this.env.createVar(vardef)
     } else {
       this.root = this.env.addVar(vardef)
+      await this.env.observe(this.root);
     }
-    console.log(`CREATED ROOT: ${this.root}`);
-    await this.env.observe(this.root);
-    console.log(`OBSERVING ROOT`, this.root);
-    console.log(`presenting people`);
     const view = await this.env.present(this.root);
     console.log(`Got View`, view);
     element.remove();

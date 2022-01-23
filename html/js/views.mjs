@@ -1,9 +1,11 @@
 export const DEFAULT_METADATA = /(^.*):(?:(.*),)?defaults(?:,(.*))?$|^([^:]+)$/;
 export const EVENT_BINDING = /^data-on-(.*)$/;
 export const BIND_METADATA = /(^.*):(?:(.*),)?(get|set|prop)=([^,]+)(?:,(.*))?$/;
+export const ADJUST_METADATA = /(^.*):(?:(.*),)?(adjustIndex())(?:,(.*))?$/;
+export const PRIORITY_METADATA = /(^.*):(?:(.*),)?(priority)=([^,]+)(?:,(.*))?$/;
 
 function clean(word) {
-  return word.match(/^([^:()]*)(\(\))?$/)[1]
+  return word.match(/^[. ]*([^:()]*)(\(\))?$/)[1]
 }
 
 function findall(el, sel) {
@@ -13,11 +15,15 @@ function findall(el, sel) {
   return result;
 }
 
-function updateFromEvent(node, set, variable) {
-  if (node[set] instanceof Function) {
-    node[set](variable.value);
-  } else {
-    node[set] = variable.value;
+function updateFromEvent(node, get, set, variable) {
+  let value = variable.adjustIndex ? variable.value - 1 : variable.value;
+
+  if (value != node[get]) {
+    if (node[set] instanceof Function) {
+      node[set](value);
+    } else {
+      node[set] = value;
+    }
   }
 }
 
@@ -48,13 +54,15 @@ export class View {
   nodes = new Set();
   selectableNodes = [];
   disablingSelection = false;
+  defaultNodeType;
 
-  constructor(rootVar, namespace, parent) {
+  constructor(rootVar, namespace, parent, defaultNodeType = 'div') {
     this.rootVar = rootVar;
     this.namespace = namespace;
     this.type = rootVar.type;
     rootVar.observe(()=> this.update());
     this.views.activeViews.add(this);
+    this.defaultNodeType = defaultNodeType;
     if (parent) {
       this.parent = parent
       parent.children.push(this)
@@ -68,7 +76,7 @@ export class View {
   get views() {return this.env.views;}
 
   async fetchElement() {
-    const viewdef = await this.views.fetchViewdef(this.rootVar, this.namespace);
+    const viewdef = await this.views.fetchViewdef(this.rootVar, this.namespace, this.defaultNodeType);
 
     this.element = viewdef.cloneNode(true);
     this.scan(this.element);
@@ -96,34 +104,49 @@ export class View {
     }
   }
 
-  async disableSelections(func) {
-    this.parent ? this.parent.handleDisableSelections(func) : func();
+  top() {return this.parent ? this.parent.top() : this;}
+
+  async disableSelections(func, ctx) {
+    this.top().handleDisableSelections(func, ctx);
   }
 
-  async handleDisableSelections(func) {
+  async handleDisableSelections(func, ctx) {
     this.disablingSelection++;
+    ctx?.jus_events?.selectionHandler && ctx.jus_events?.selectionHandler.disable()
     try {
       const result = func();
 
       if (result instanceof Promise) await result;
     } finally {
-      setTimeout(()=> {
-        this.disablingSelection--;
-        this.restoreSelections();
-      });
+      ctx?.jus_events?.selectionHandler && ctx.jus_events?.selectionHandler.enable()
+      this.disablingSelection--;
+      !this.disablingSelection && this.restoreSelections();
+    }
+  }
+
+  restoreSelection(node) {
+    if (!node.jus_events) return;
+    for (const evt of Views.LIST_SELECT_EVENTS) {
+      const evtInfo = node.jus_events[evt];
+
+      if (!evtInfo) continue;
+      updateFromEvent(node, evtInfo.get, evtInfo.set, evtInfo.variable)
     }
   }
 
   restoreSelections() {
-    if (this.disablingSelection) return;
-    for (const evt of Views.LIST_SELECT_EVENTS) {
-      for (const node of this.selectableNodes) {
-        const evtInfo = node.jus_events && node.jus_events[evt];
+    const t = this.top();
 
-        if (evtInfo) {
-          updateFromEvent(node, evtInfo.set, evtInfo.variable)
-        }
-      }
+    if (t.disablingSelection) return;
+    t.handleRestoreSelections();
+  }
+  
+  handleRestoreSelections() {
+    for (const node of this.selectableNodes) {
+      this.restoreSelection(node);
+    }
+    for (const child of this.children) {
+      child.handleRestoreSelections();
     }
   }
 
@@ -132,24 +155,26 @@ export class View {
     let views = [];
 
     this.selectableNodes.push(node);
-    v.observe(async ()=> {
+    Views.configure(this, node);
+    v.observe(()=> {
       let newLen = Array.isArray(v.value) ? v.value.length : 0;
 
-      console.log(`Length of ${v.name}(${v.id}) changed from ${oldLen} to ${newLen}`, v);
-      for (; newLen < oldLen; oldLen--) { // the list shrunk
-        const view = views.pop();
+      this.disableSelections(async ()=> {
+        for (; newLen < oldLen; oldLen--) { // the list shrunk
+          const view = views.pop();
 
-        view.parentElement.remote();
-        view.var.delete();
-      }
-      for (; oldLen < newLen; oldLen++) { // the list grew
-        let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v);
-        let view = await this.env.present(newVar, node.getAttribute('data-namespace'), this);
+          view.element.remove();
+          view.rootVar.destroy();
+        }
+        for (; oldLen < newLen; oldLen++) { // the list grew
+          let newVar = await this.env.createVar(`${oldLen + 1}:path=${oldLen + 1},access=r`, v);
+          let view = await this.env.present(newVar, node.getAttribute('data-namespace'), this);
 
-        views.push(view);
-        node.appendChild(view.element);
-      }
-      oldLen = newLen;
+          views.push(view);
+          node.appendChild(view.element);
+        }
+        oldLen = newLen;
+      }, newLen != oldLen ? node : null);
     });
   }
 
@@ -197,18 +222,23 @@ export class View {
       set = p1 == 'set' ? v1 : v2;
       varName = n2
     }
+    const [n3, adjust, v3] = extractMetadata(varName, ADJUST_METADATA);
+    if (adjust) varName = n3;
+    const [n4,, priority] = extractMetadata(varName, PRIORITY_METADATA);
+    if (n4) varName = n4;
     const v = await this.prepVar(node, varName, 'access=rw');
+    if (adjust) v.adjustIndex = true;
+    v.priority = priority ? Number(priority) : -1;
     if (!node.jus_events) node.jus_events = {};
-    node.jus_events[evt] = {set, variable: v};
+    node.jus_events[evt] = {get, set, variable: v};
     await v.observe(()=> {
-      updateFromEvent(node, set, v)
+      this.disableSelections(()=> updateFromEvent(node, get, set, v));
     });
-    Views.addEventListener(node, evt, ()=> {
+    node.addEventListener(evt, ()=> {
       if (this.disablingSelection) return;
-      const value = node[get];
-      if (v.value != value) {
-        v.set(value);
-      }
+      let value = node[get];
+      if (v.adjustIndex) value++;
+      v.value != value && v.set(value);
     });
   }
 
@@ -221,7 +251,7 @@ export class View {
       const oldElement = this.element;
       await this.fetchElement();
       oldElement.replaceWith(this.element);
-    });
+    }, this.element.parentElement);
   }
 
   destroy() {
@@ -259,26 +289,24 @@ export function parseHtml(html) {
   return result;
 }
 
+function emptySelectionPreserver(node, func) {
+  return func()
+}
+
 export class Views {
   viewdefs = {};
   activeViews = new Set();
 
-  static eventBinders = {};
+  static configHandlers = {};
 
-  static addEventBinder(nodeName, evt, binder) {
-    const key = `${nodeName.toLocaleLowerCase()},${evt}`;
-
-    Views.eventBinders[key] = binder;
+  static handleConfigure(nodeName, func) {
+    Views.configHandlers[nodeName.toLocaleLowerCase()] = func;
   }
 
-  static addEventListener(node, evt, listener) {
-    const key = `${node.nodeName.toLocaleLowerCase()},${evt}`;
+  static configure(view, node) {
+    const func = Views.configHandlers[node.nodeName.toLocaleLowerCase()];
 
-    if (key in Views.eventBinders) {
-      Views.eventBinders[key](node, listener);
-    } else {
-      node.addEventListener(evt, listener);
-    }
+    func && func(view, node);
   }
 
   /**
@@ -289,17 +317,17 @@ export class Views {
   /**
    * event names that indicate list selection changes
    */
-  static LIST_SELECT_EVENTS = ['change', 'selected'];
+  static LIST_SELECT_EVENTS = new Set(['change', 'selected']);
 
 
   static isTextField(node) {
     return Views.TEXT_FIELD_MATCHERS.findIndex(m=> m(node)) > -1
   }
 
-  async fetchViewdef(rootVar, namespace) {
+  async fetchViewdef(rootVar, namespace, defaultNodeType) {
     const type = rootVar.type;
     
-    if (!type) return parseHtml('<div></div>');
+    if (!type) return parseHtml(`<${defaultNodeType}></${defaultNodeType}>`);
     const req = namespace ? `${type}-${namespace}` : type;
     if (namespace) {
       const viewdef = await this.fetchViewdefNamed(req, req)
@@ -308,7 +336,7 @@ export class Views {
     const viewdef = await this.fetchViewdefNamed(req, type)
     if (viewdef) return viewdef;
     console.error(`No viewdef for ${req}`);
-    return this.viewdefs[req] = parseHtml('<div></div>');
+    return this.viewdefs[req] = parseHtml(`<${defaultNodeType}></${defaultNodeType}>`);
   }
 
   async fetchViewdefNamed(reqName, name) {

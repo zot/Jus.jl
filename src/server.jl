@@ -75,8 +75,10 @@ function command(cmd::JusCmd{:set})
     local vars = []
     local creating
     local metadata
+    local observing
     function newset()
         creating = false
+        observing = false
         metadata = Dict{Symbol, AbstractString}()
     end
 
@@ -93,6 +95,7 @@ function command(cmd::JusCmd{:set})
         else
             value = cmd.args[pos + 1]
             var, creating = findvar(cmd, creating, vars, cmd.args[pos], metadata, value)
+            creating && haskey(var.metadata, :observe) && push!(connection(cmd).observing, var.id)
             @debug("FOUND VARIABLE: $(var)")
             creating && push!(new, var)
             parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
@@ -114,7 +117,7 @@ function command(cmd::JusCmd{:set})
         end
         pos += 1
     end
-    output(cmd, result = map(v-> json(cmd, v.id), new))
+    output(cmd; result = map(v-> json(cmd, v.id), new))
 end
 
 function command(cmd::JusCmd{:get})

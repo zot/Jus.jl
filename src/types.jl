@@ -92,6 +92,7 @@ mutable struct Config
     namespace::Namespace
     vars::Dict{ID, Var}
     host::Sockets.IPv4
+    hostname::AbstractString
     port::UInt16
     server::Bool
     diag::Bool
@@ -102,7 +103,6 @@ mutable struct Config
     client::AbstractString
     nextmsg::Int
     namespaces::Dict{AbstractString, Namespace}
-    secret::AbstractString
     serverfunc::Function
     connections::Dict{Any, Connection}
     changes::Dict{ID, Dict{Symbol, Any}}
@@ -111,6 +111,7 @@ mutable struct Config
                     namespace::Namespace = Namespace("ROOT", "", 0),
                     vars::Dict{ID, Var} = Dict{ID, Var}(),
                     host::IPv4 = ip"0.0.0.0",
+                    hostname::AbstractString = "localhost",
                     port::UInt16 = UInt16(8181),
                     server::Bool = false,
                     diag::Bool = false,
@@ -121,7 +122,6 @@ mutable struct Config
                     client::AbstractString = "",
                     nextmsg::Int = 0,
                     namespaces::Dict{AbstractString, Namespace} = Dict{AbstractString, Namespace}(), # namespaces and their secrets
-                    secret::AbstractString = "",
                     serverfunc::Function = serve,
                     connections::Dict{Any, Connection} = Dict{Any, Connection}(),
                     changes::Dict{ID, Dict{Symbol, Any}} = Dict{ID, Dict{Symbol, Any}}(),
@@ -132,6 +132,7 @@ mutable struct Config
             namespace,
             vars,
             host,
+            hostname,
             port,
             server,
             diag,
@@ -142,7 +143,6 @@ mutable struct Config
             client,
             nextmsg,
             namespaces,
-            secret,
             serverfunc,
             connections,
             changes,

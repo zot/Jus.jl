@@ -14,6 +14,9 @@ export class Var {
   observers = [];
   children = {};
   env;
+  adjustIndex = false;
+  priority = 0;
+  parent;
 
   constructor(id, name, parent, env) {
     this.id = id;
@@ -63,17 +66,27 @@ export class Var {
   observe(func) {this.observers.push(func);}
 
   update(info) {
-    if ('set' in info) this.value = info.set;
+    let changed = false;
+
+    if ('set' in info && this.value != info.set) {
+      this.value = info.set;
+      changed = true;
+    }
     if ('metadata' in info) {
       for (const k of Object.keys(info.metadata)) {
-        this.metadata[k] = info.metadata[k];
+        if (this.metadata[k] != info.metadata[k]) {
+          this.metadata[k] = info.metadata[k];
+      changed = true;
+        }
       }
     }
-    for (const o of this.observers) {
-      try {
-        o(info);
-      } catch (err) {
-        console.error(err);
+    if (changed) {
+      for (const o of this.observers) {
+        try {
+          o(info);
+        } catch (err) {
+          console.error(err);
+        }
       }
     }
   }
@@ -82,10 +95,13 @@ export class Var {
     return this.env.createVar(name, this.id)
   }
 
-  destroy() {
+  destroy(send) {
+    if (send) {
+      // TODO: NOT IMPLEMENTED
+    }
+    delete this.parent.children[this.id]
     this.destroyChildren();
     this.id = null;
-    console.error(`destroy not yet implemented`);
   }
 
   destroyChildren() {
@@ -113,8 +129,8 @@ export class Env {
     return this.jus.ready;
   }
 
-  async present(rootVar, namespace, parent) {
-    return new View(rootVar, namespace, parent).fetchElement();
+  async present(rootVar, namespace, parent, defaultNodeType) {
+    return new View(rootVar, namespace, parent, defaultNodeType).fetchElement();
   }
 
   async createVar(name, parent) {
@@ -124,7 +140,6 @@ export class Env {
 
     varPath += v.name || nameParts[1]
     if (Object.keys(v.metadata).length) varPath += `:${v.metadataString()}`
-    console.log('CREATING', v);
     await this.jus.set('-c', varPath, null);
     return v;
   }
@@ -155,5 +170,15 @@ export class Env {
     }
   }
 
-  update(id, info) {this.vars[id]?.update(info);}
+  prioritySort(ids) {
+    return [...ids]
+      .filter(id=> this.vars[id])
+      .sort((a, b)=> this.vars[b].priority - this.vars[a].priority)
+  }
+
+  update(info) {
+    for (const id of this.prioritySort(Object.keys(info))) {
+      this.vars[id].update(info[id]);
+    }
+  }
 }

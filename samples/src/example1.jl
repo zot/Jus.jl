@@ -1,5 +1,3 @@
-println("EXAMPLE")
-
 import Base.@kwdef
 
 @kwdef mutable struct Person
@@ -10,43 +8,26 @@ import Base.@kwdef
 end
 
 @kwdef mutable struct PersonApp
-    people::Dict{AbstractString, Person} = Dict()
-    sorted_people::Vector{Person} = []
+    people::Vector{Person} = Person[]
     namefield = ""
     addressfield = ""
-    selected_person::Number = 0
+    selected_person::Union{Nothing, Person} = nothing
     next_id::Number = 1
     new_person_tooltip = "A new person needs a name"
     new_person_enabled = false
     editing_enabled = false
 end
 
-people(app::PersonApp) = app.sorted_people
+sort_people(app::PersonApp) = app.people = sort!(app.people, by = p-> lowercase(p.name))
 
-sort_people(app::PersonApp) =
-    app.sorted_people = sort([values(app.people)...], by = p-> lowercase(p.name))
-
-function selected_person(app::PersonApp)
-    app.selected_person == 0 && return nothing
-    app.sorted_people[findfirst(p-> p.id == app.selected_person, app.sorted_people)]
-end
-
-function person_index(app::PersonApp)
-    i = findfirst(p-> app.selected_person == p.id, app.sorted_people)
-    return i === nothing ? -1 : i - 1
-end
-person_index(app::PersonApp, new_index::AbstractString) = person_index(app, parse(Number, new_index))
-function person_index(app::PersonApp, new_index::Number)
-    new_index += 1
-    if 0 < new_index <= length(app.sorted_people)
-        show_person(app, new_index)
-    else
-        clear_person(app)
-    end
+person_index(app::PersonApp) = something(findfirst(x-> x == app.selected_person, app.people), 0)
+function person_index(app::PersonApp, index::Number)
+    println("SELECTING PERSON $index")
+    show_person(app, 1 <= index <= length(app.people) ? app.people[index] : nothing)
 end
 
 function clear_person(app::PersonApp)
-    app.selected_person = 0
+    app.selected_person = nothing
     app.namefield = ""
     app.addressfield = ""
     check_fields(app)
@@ -54,10 +35,12 @@ end
 
 show_person(app::PersonApp, index::Number) = show_person(app, app.sorted_people[index])
 function show_person(app::PersonApp, p::Person)
-    app.selected_person = p.id
-    app.namefield = p.name
-    app.addressfield = p.address
+    app.selected_person = p
+    app.namefield = something(p.name, "")
+    app.addressfield = something(p.address, "")
     check_fields(app)
+    println("###\n### SHOWING $(p === nothing ? "nothing" : p.name * ", ID: " * string(p.id))")
+    println("###\n### INDEX: $(person_index(app))")
 end
 
 addressfield(app::PersonApp) = app.addressfield
@@ -75,13 +58,13 @@ end
 function check_fields(app::PersonApp)
     println("CHECKING FIELDS OF $app")
     app.new_person_enabled = false
-    app.editing_enabled = app.selected_person != 0
+    app.editing_enabled = app.selected_person !== nothing
     app.new_person_tooltip = ""
     if app.namefield == ""
         app.new_person_tooltip = "A new person needs a name"
     elseif app.addressfield == ""
         app.new_person_tooltip = "A new person needs an address"
-    elseif haskey(app.people, app.namefield)
+    elseif findfirst(p-> p.name == app.namefield, app.people) !== nothing
         app.new_person_tooltip = "There is already a person named $(app.namefield)"
     else
         app.new_person_enabled = true
@@ -94,19 +77,21 @@ function new_person(app::PersonApp)
         name = app.namefield,
         address = app.addressfield)
     app.next_id += 1
-    app.people[app.namefield] = p
+    push!(app.people, p)
     sort_people(app)
     show_person(app, p)
     println("Created a person")
 end
 
 function change_person(app::PersonApp)
-    p = selected_person(app)
+    p = app.selected_person
     p.name = app.namefield
     p.address = app.addressfield
     sort_people(app)
 end
 
-function delete_person(app::PersonApp)
-    println("Delete person")
+function delete_person(app::PersonApp, p::Person)
+    println("###\n### DELETE $(p)")
+    p === nothing && return
+    splice!(app.people, person_index(app))
 end

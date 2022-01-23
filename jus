@@ -1,18 +1,47 @@
 #!/bin/sh
 DIR=$(dirname $(realpath "$0"))
-if [ "$1" = -r ]; then
+
+function monitor() {
+    dir=$(mktemp -d)
+    mknod "$dir/pipe" p
+    (time (grep "CREATING PERSON APP" "$dir/pipe" > /dev/null; echo @@@@@@ DONE))&
+    tee "$dir/pipe"
+}
+
+optimize="-O0"
+
+while [ "$#" != 0 ]; do
+    case "$1" in
+        -r)
+            revise=true
+            ;;
+        -O)
+            optimize=""
+            ;;
+        -O[0-3])
+            optimize="$1"
+            ;;
+        *)
+            break
+        ;;
+    esac
+    shift
+done
+
+if [ -n "$revise" ]; then
     shift
     if [ -e "$DIR/jus.so" ]; then
         echo SYSIMAGE: "$DIR/jus.so"
-        exec julia -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/rmain.jl" "$@"
+        exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/rmain.jl" "$@"
     else
-        exec julia "--project=$DIR" "$DIR/src/rmain.jl" "$@"
+        exec julia $optimize "--project=$DIR" "$DIR/src/rmain.jl" "$@"
     fi
 else
     if [ -e "$DIR/jus.so" ]; then
         echo SYSIMAGE: "$DIR/jus.so"
-        exec julia -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" "$@"
+        #exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" "$@" | monitor
+        exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" "$@"
     else
-        exec julia "--project=$DIR" "$DIR/src/main.jl" "$@"
+        exec julia $optimize "--project=$DIR" "$DIR/src/main.jl" "$@"
     fi
 fi

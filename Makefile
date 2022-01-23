@@ -6,6 +6,6 @@ jus.so:
 samples: samples/output/widgets.js
 
 run: FRC
-	./jus -r ROOT -s localhost:7777 -e 'includet("../samples/src/example1.jl")' -i samples/html -b PersonApp
+	./jus ROOT -s localhost:7777 -e 'include("../samples/src/example1.jl")' -i samples/html -b PersonApp
 
 FRC:
