@@ -70,6 +70,15 @@ function findvar(cmd::JusCmd, create, vars, path, metadata::Union{Nothing, Dict{
     end
 end
 
+function command(cmd::JusCmd{:setmeta})
+    var = cmd.config[resolve(cmd, [], cmd.args[1])]
+    prop = Symbol(cmd.args[2])
+    value = cmd.args[3]
+    parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
+    set_metadata(VarCommand(cmd, :setmeta, (), var), prop, value)
+    route(parentvalue, VarCommand(cmd, :metadata, (prop,), var))
+end
+
 function command(cmd::JusCmd{:set})
     local new = []
     local vars = []
@@ -95,7 +104,6 @@ function command(cmd::JusCmd{:set})
         else
             value = cmd.args[pos + 1]
             var, creating = findvar(cmd, creating, vars, cmd.args[pos], metadata, value)
-            creating && haskey(var.metadata, :observe) && push!(connection(cmd).observing, var.id)
             @debug("FOUND VARIABLE: $(var)")
             creating && push!(new, var)
             parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value

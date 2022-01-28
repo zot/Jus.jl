@@ -1,3 +1,5 @@
+import {last} from './jus.mjs'
+
 export const DEFAULT_METADATA = /(^.*):(?:(.*),)?defaults(?:,(.*))?$|^([^:]+)$/;
 export const EVENT_BINDING = /^data-on-(.*)$/;
 export const BIND_METADATA = /(^.*):(?:(.*),)?(get|set|prop)=([^,]+)(?:,(.*))?$/;
@@ -5,7 +7,7 @@ export const ADJUST_METADATA = /(^.*):(?:(.*),)?(adjustIndex())(?:,(.*))?$/;
 export const PRIORITY_METADATA = /(^.*):(?:(.*),)?(priority)=([^,]+)(?:,(.*))?$/;
 
 function clean(word) {
-  return word.match(/^[. ]*([^:()]*)(\(\))?$/)[1]
+  return last(word.match(/^[. ]*([^:()]*)(\(\))?$/)[1].split(" "))
 }
 
 function findall(el, sel) {
@@ -179,6 +181,11 @@ export class View {
   }
 
   async scan(el) {
+    await this.scanAttr(el, 'data-view', 'access=r', (v, node)=> {
+      const namespace = node.getAttribute('data-namespace') || undefined;
+
+      new View(v, namespace, this)
+    })
     await this.scanAttr(el, 'data-text', 'access=r', (v, node)=> v.observe(()=> node.textContent = v.value));
     await this.scanAttr(el, 'data-value', node=> Views.isTextField(node) ? 'access=rw,blur' : 'access=rw', (v, node)=> {
       v.observe(()=> {
@@ -326,24 +333,38 @@ export class Views {
 
   async fetchViewdef(rootVar, namespace, defaultNodeType) {
     const type = rootVar.type;
+    const name = namespace ? `${type}-${namespace}` : type;
+    let def;
     
-    if (!type) return parseHtml(`<${defaultNodeType}></${defaultNodeType}>`);
-    const req = namespace ? `${type}-${namespace}` : type;
-    if (namespace) {
-      const viewdef = await this.fetchViewdefNamed(req, req)
-      if (viewdef) return viewdef;
+    if (this.viewdefs[name]) return this.viewdefs[name];
+    if (!type) return this.registerViewdef(name, parseHtml(`<${defaultNodeType}></${defaultNodeType}>`));
+    if (def = this.parseGenViewdef(rootVar, name)) return def;
+    if (namespace && (def = await this.fetchViewdefNamed(name))) return def;
+    if (def = await this.fetchViewdefNamed(type)) return def;
+    if (!rootVar.metadata.genview) {
+      await rootVar.setmeta("genview", namespace);
+      console.log("GENERATED VIEW FOR", rootVar);
+      if (def = this.parseGenViewdef(rootVar, name)) return def;
     }
-    const viewdef = await this.fetchViewdefNamed(req, type)
-    if (viewdef) return viewdef;
-    console.error(`No viewdef for ${req}`);
-    return this.viewdefs[req] = parseHtml(`<${defaultNodeType}></${defaultNodeType}>`);
+    console.error(`Could not fetch viewdef for ${name}`);
+    return this.registerViewdef(name, parseHtml(`<${defaultNodeType}></${defaultNodeType}>`));
   }
 
-  async fetchViewdefNamed(reqName, name) {
+  parseGenViewdef(rootVar, name) {
+    if (rootVar.metadata.viewdef) return this.registerViewdef(name, parseHtml(rootVar.metadata.viewdef));
+  }
+
+  registerViewdef(name, node) {
+    console.log(`REGISTERING ${name}`, node);
+    this.viewdefs[name] = node;
+    return node;
+  }
+
+  async fetchViewdefNamed(name) {
     try {
       const result = await fetch(`viewdefs/${name}.html`);
 
-      return this.viewdefs[name] = parseHtml(await result.text());
+      return this.registerViewdef(name, parseHtml(await result.text()));
     } catch (err) {}
     return;
   }

@@ -1,0 +1,12 @@
+<div class='flex flex-row items-center w-100'>
+  <div class='grow self-stretch' data-class-toggle='hide_editor:class=hidden'>
+    <div class='flex flex-col w-80'>
+      <fast-text-field
+        autofocus
+        appearance='filled'
+        data-value='name'>Name</fast-text-field>
+      <fast-text-field appearance='filled' data-value='address'>Address</fast-text-field>
+      <fast-text-field readonly data-value='id:defaults,access=r'>ID</fast-text-field>
+    </div>
+  </div>
+</div>

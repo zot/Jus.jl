@@ -1,10 +1,8 @@
-import {Jus} from './jus.mjs'
+import {Jus, last} from './jus.mjs'
 import {View, Views} from './views.mjs'
 
 const FULL_NAME = /^([^:]+)(:(.*))?$/;
 const META_PROPERTY = /^([^,=]+)(?:=([^,]*)(?:,(.*))?)?$/
-
-function last(x) {return x[x.length - 1]}
 
 export class Var {
   id;
@@ -113,6 +111,12 @@ export class Var {
   set(value) {
     if (this.value != value) {
       this.env.jus.set(this.id, value);
+    }
+  }
+
+  async setmeta(name, value) {
+    if (this.metadata[name] !== value) {
+      await this.env.jus.setmeta(this.id, name, value);
     }
   }
 }

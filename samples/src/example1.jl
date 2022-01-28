@@ -1,9 +1,9 @@
 import Base.@kwdef
 
 @kwdef mutable struct Person
-    name::AbstractString
-    id::Number
-    address::AbstractString
+    name::AbstractString = ""
+    id::Number = 1
+    address::AbstractString = ""
     friends::Dict{AbstractString, Person} = Dict()
 end
 

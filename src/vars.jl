@@ -137,9 +137,11 @@ function Var(cmd::JusCmd; id::ID, name = Symbol(""), args...)
     v.parent !== EMPTYID && name != Symbol("") && (cmd.config[v.parent][name] = v)
     v.parent !== EMPTYID && name != Symbol("") && @debug("ADDED CHILD OF $(v.parent) NAMED $(name) = $(cmd.config[v.parent][name])")
     !isempty(v.metadata) && @debug("VAR $(v.name) metadata: $(v.metadata)")
+    # route handle high priority metadata first
     haskey(v.metadata, :create) && initial_route_meta(cmd, :create, v)
     haskey(v.metadata, :access) && initial_route_meta(cmd, :access, v)
     haskey(v.metadata, :path) && initial_route_meta(cmd, :path, v)
+    # route remaining metadata
     for (mk, _) in v.metadata
         mk in (:access, :path, :create) && continue
         initial_route_meta(cmd, mk, v)
@@ -228,6 +230,9 @@ function set_path_from_metadata(cmd::VarCommand)
     end
 end
 
+dicty(::Union{AbstractDict, NamedTuple}) = true
+dicty(x::T) where T = hasmethod(haskey, Tuple{T, Symbol}) && hasmethod(get, Tuple{T, Symbol})
+
 function basic_get_path(cmd::VarCommand, path)
     var = cmd.var
     var.parent == EMPTYID && throw(CmdException(:path, cmd, "no parent"))
@@ -241,7 +246,13 @@ function basic_get_path(cmd::VarCommand, path)
             throw(CmdException(:path, cmd, "error getting $(cmd.var) field $(el) in path $path"))
         elseif el isa Symbol
             try
-                cur = getfield(cur, el)
+                if dicty(cur) && haskey(cur, el)
+                    cur = get(cur, el)
+                elseif cur isa AbstractDict && haskey(cur, string(el))
+                    cur = get(cur, string(el))
+                else
+                    cur = getfield(cur, el)
+                end
             catch err
                 rethrow(CmdException(:path, cmd, "error getting $(cmd.var) field $(el) in path $path", err))
             end

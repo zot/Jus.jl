@@ -77,6 +77,7 @@ end
     pending_result::NamedTuple = (;)
     vars::Set{Var} = Set{Var}()
     requests::Set = Set()
+    sequence::Int = 1
 end
 
 """

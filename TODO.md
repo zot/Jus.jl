@@ -1,6 +1,14 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
+- [ ] testing :genview with example2.jl:
+  - [ ] person view
+    ```julia
+    includet("samples/src/example1.jl")
+    Jus.start(Person(name="Fred", address="123"))
+    ```
+  - [ ] vector of people (generated to use listeditor presenter)
+
 - [ ] fix deleting people in sample app
 - [ ] implement `delete id` that deletes a var and all its children
 - [ ] rename disableSelection to disableUpdates

@@ -21,6 +21,9 @@ while [ "$#" != 0 ]; do
         -O[0-3])
             optimize="$1"
             ;;
+        -i)
+            interactive="-i"
+            ;;
         *)
             break
         ;;
@@ -29,19 +32,18 @@ while [ "$#" != 0 ]; do
 done
 
 if [ -n "$revise" ]; then
-    shift
     if [ -e "$DIR/jus.so" ]; then
         echo SYSIMAGE: "$DIR/jus.so"
-        exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/rmain.jl" "$@"
+        exec julia $interactive $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/rmain.jl" $interactive "$@"
     else
-        exec julia $optimize "--project=$DIR" "$DIR/src/rmain.jl" "$@"
+        exec julia $interactive $optimize "--project=$DIR" "$DIR/src/rmain.jl" $interactive "$@"
     fi
 else
     if [ -e "$DIR/jus.so" ]; then
         echo SYSIMAGE: "$DIR/jus.so"
         #exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" "$@" | monitor
-        exec julia $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" "$@"
+        exec julia $interactive $optimize -J "$DIR/jus.so" "--project=$DIR" "$DIR/src/main.jl" $interactive "$@"
     else
-        exec julia $optimize "--project=$DIR" "$DIR/src/main.jl" "$@"
+        exec julia $interactive $optimize "--project=$DIR" "$DIR/src/main.jl" $interactive "$@"
     fi
 fi

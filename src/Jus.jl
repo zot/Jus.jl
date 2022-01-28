@@ -10,6 +10,7 @@ using Generators
 using Pkg
 using DefaultApplication
 using Sockets
+using Mustache
 
 import Base.@kwdef, Base.Iterators.flatten
 import Base.Iterators.flatten
@@ -17,6 +18,7 @@ import Base.Iterators.flatten
 include("types.jl")
 include("vars.jl")
 include("server.jl")
+include("gen.jl")
 
 export exec, serve, input, output, set_metadata, Config, present, start
 
@@ -29,11 +31,12 @@ function usage()
 
 NAMESPACE is this jus instance's namespace
 
+-i          interactive -- don't start Jus, just run the Julia repl
 -s ADDR     serve HTTP requests on ADDR if ADDR starts with '/', use a UNIX domain socket
 -c ADDR     connect to ADDR using NAMESPACE
 -x SECRET   use secret to prove ownership of NAMESPACE. If NAMESPACE does not yet exist,
             the server creates it and associates SECRET with it.
--i DIR      include dir to the http server file path
+-d DIR      add dir to the http server file path
 -e EXPR     evaluate Julia expression
 -b TYPE     open browser on TYPE
 -v          verbose
@@ -136,15 +139,22 @@ end
 function exec(serverfunc, args::Vector{String}; config = Config())
     local browse = ""
 
-    # name required -- only one instance per name allowed
-    (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && usage()
-    config.serverfunc = serverfunc
-    config.namespace.name = args[1]
-    i = 2
+    interactive = "-i" in args
+    interactive && (args = filter(x-> x != "-i", args))
+    if interactive && (isempty(args) || match(r"^-.*$", args[1]) !== nothing)
+        i = 1
+    else
+        # name required -- only one instance per name allowed
+        (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && !("-i" in args) && usage()
+        config.serverfunc = serverfunc
+        config.namespace.name = args[1]
+        i = 2
+    end
     while i <= length(args)
         @match args[i] begin
+            "-i" => (interactive = true)
             "-e" => Main.eval(Meta.parse(args[i += 1]))
-            "-i" => add_file_dir(args[i += 1])
+            "-d" => add_file_dir(args[i += 1])
             "-v" => (config.verbose = true)
             "-x" => (config.namespace.secret = args[i += 1])
             "-c" => parseAddr(config, args[i += 1])
@@ -162,6 +172,7 @@ function exec(serverfunc, args::Vector{String}; config = Config())
         end
         i += 1
     end
+    interactive && return
     atexit(()-> shutdown(config))
     config.server && browse != "" && present(config, browse)
     (config.server ? server : client)(config)
@@ -176,7 +187,7 @@ and, if given a type, opens a browser page editing the type.
 
 Returns the config.
 """
-function start(data = nothing; port = 0, host = nothing, dirs=[], async=true)
+function start(data = nothing; port = 0, host = nothing, dirs=[], async=true, metadata=(;))
     for dir in dirs
         add_file_dir(dir)
     end
@@ -184,9 +195,9 @@ function start(data = nothing; port = 0, host = nothing, dirs=[], async=true)
     port, socket = host === nothing ? Sockets.listenany(port) : Sockets.listenany(IPv4(host), port)
     config.port = port
     config.host = getsockname(socket)[1]
-    config.hostname = host
+    config.hostname = host !== nothing ? host : config.host == ip"0.0.0.0" ? "localhost" : string(config.host)
     println("HOST: $(config.host)")
-    data !== Nothing && present(config, data)
+    data !== nothing && data !== Nothing && present(config, data, metadata)
     if async
         @async server(config, socket)
     else
@@ -195,26 +206,31 @@ function start(data = nothing; port = 0, host = nothing, dirs=[], async=true)
     config
 end
 
-function present(config::Config, data)
+function present(config::Config, data, metadata = (;))
     var = addvar(config, data)
     #make the connection track the variable so it cleans up on disconnect
     config.init_connection = con-> addvar(con, var)
     @async begin
         try
             sleep(0.5)
-            DefaultApplication.open("http://$(confit.hostname):$(config.port)/shell.html?$(var.id)")
+            DefaultApplication.open("http://$(config.hostname):$(config.port)/shell.html?$(var.id)")
         catch err
+            @error "Error opening browser" exception=err,catch_backtrace()
             exit(1)
         end
     end
 end
-present(config::Config, type::Type) = present(config, "$(Base.parentmodule(type)).$type")
-function present(config::Config, type::String)
+present(config::Config, type::Type, metadata = (;)) =
+    present(config, "$(Base.parentmodule(type)).$type", metadata)
+function present(config::Config, type::String, metadata = (;))
+    md = join(["$k:$v" for (k, v) in pairs(metadata)], ",")
+    !isempty(md) && (md = ",$md")
     @async begin
         try
             sleep(0.5)
-            DefaultApplication.open("http://$(config.hostname):$(config.port)/shell.html?@/0:create=$type")
+            DefaultApplication.open("http://$(config.hostname):$(config.port)/shell.html?@/0:create=$type$md")
         catch err
+            @error "Error opening browser" exception=err,catch_backtrace()
             exit(1)
         end
     end
@@ -354,6 +370,11 @@ function default_handle(value, cmd::VarCommand{:metadata, (:access,)})
     println("@@@ ACCESS METADATA: $(repr(cmd))")
     set_access_from_metadata(cmd.var)
 end
+
+default_handle(value, cmd::VarCommand{:metadata, (:observe,)}) =
+    push!(cmd.connection.observing, cmd.var.id)
+
+default_handle(value, cmd::VarCommand{:metadata, (:genview,)}) = generate_viewdef(cmd)
 
 function default_handle(value, cmd::VarCommand{:set})
     #println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")

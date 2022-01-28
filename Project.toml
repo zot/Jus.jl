@@ -1,7 +1,13 @@
+name = "Jus"
+uuid = "6c5b89eb-f5af-4089-a19b-aae263340b2b"
+authors = ["Bill Burdick <bill.burdick@gmail.com>"]
+version = "0.1.0"
+
 [deps]
 DefaultApplication = "3f0dd361-4fe0-5fc6-8523-80b14ec94d85"
 Generators = "49336fec-bb74-42b9-a3e0-aef40c3b9f63"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 Match = "7eb4fadd-790c-5f42-8a69-bfa0b872bfbf"
+Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"

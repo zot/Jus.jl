@@ -1,3 +1,5 @@
+export function last(x) {return x[x.length - 1]}
+
 export class Jus {
   addr;
   namespace;
@@ -47,6 +49,10 @@ export class Jus {
       response.update[id].set = value;
     });
     return result
+  }
+
+  async setmeta(varId, name, value) {
+    return await this.simpleCmd(['setmeta', varId, name, value])
   }
 
   async get(...args) {
