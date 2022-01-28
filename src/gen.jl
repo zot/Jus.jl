@@ -63,21 +63,37 @@ be list, link, etc.)
 generate_v(ed::ListEditor, _ns) = Mustache.render(GEN_LIST, tmpldata(ed))
 function generate_v(::Type{T}, _ns) where T
     !isstructtype(T) && return GEN_SHOW
-    render(GEN_FIELDS, (; fields = [generate_field(fieldtype(T, field), field, i == 1)
+    render(GEN_FIELDS, (; fields = [generate_field(T, field, i == 1)
                                      for (i, field) in enumerate(fieldnames(T))]))
 end
 
-generate_field(::Type{<: Vector}, field, first) =
-    render(GEN_LIST_FIELD, (; field, name = pretty(field), first))
+generate_field(owner::Type, field::AbstractString, first) = generate_field(owner, Symbol(field), first)
 
-generate_field(::Type{<: Union{AbstractString, Number}}, field, first) =
-    render(GEN_FIELD, (; field, name = pretty(field), first))
+generate_field(owner::Type, field::Symbol, first) =
+    generate_field(owner, fieldtype(owner, field), field, first)
+
+generate_field(owner::Type, ::Type{<: Vector}, field, first) =
+    render(GEN_LIST_FIELD, (; gen_introspect(owner, field)..., name = pretty(field), first))
+
+generate_field(owner::Type, ::Type{<: Union{AbstractString, Number}}, field, first) =
+    render(GEN_FIELD, (; gen_introspect(owner, field)..., name = pretty(field), first))
 
 #generate_field(::Type{T <: Bool}, field, first) =
 #    render(GEN_CHECK, (; field, name = pretty(field), first))
 
 #generate_field(::Type{T <: Enum}, field, first) =
 #    render(GEN_RADIO, (; field, name = pretty(field), first))
+
+function gen_introspect(T::Type, field)
+    try
+        println("CHECKING METHODS FOR $(Symbol(field))")
+        func = parentmodule(T).eval(Symbol(field))
+        println("FUNC: $func")
+        (hasmethod(func, (T,)) ||
+            hasmethod(func, (VarCommand, T))) && return (; field = "$field()")
+    catch err end
+    (; field)
+end
 
 tmpldata(ed::ListEditor) = to_dict((;
     id = ed.id,
