@@ -17,6 +17,7 @@ end
 function name(p::Person, value)
     println("SETTING NAME OF $p TO $value")
     p.name = string(value)
+    p.address = "$(p.name)'s address"
 end
 
 Jus.start(Person(name="Fred", address="123"))
