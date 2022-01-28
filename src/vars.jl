@@ -251,7 +251,7 @@ function basic_get_path(cmd::VarCommand, path)
                 elseif cur isa AbstractDict && haskey(cur, string(el))
                     cur = get(cur, string(el))
                 else
-                    cur = getfield(cur, el)
+                    cur = getproperty(cur, el)
                 end
             catch err
                 rethrow(CmdException(:path, cmd, "error getting $(cmd.var) field $(el) in path $path", err))
@@ -291,7 +291,7 @@ function set_path(cmd::VarCommand)
         throw(CmdException(:path, cmd, "error setting field $(el) in path $(cmd.var.path) for $(cmd.var)"))
     elseif el isa Symbol
         try
-            setfield!(cur, el, cmd.arg)
+            setproperty!(cur, el, cmd.arg)
         catch err
             rethrow(CmdException(:path, cmd, "error setting $(cmd.var) field $(el)", err))
         end

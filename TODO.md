@@ -1,10 +1,12 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
+- [ ] put the generation templates into a directory
+  - [ ] make Config have a directory path for templates to developers can override it
+  - [ ] add a Config.store_generated field to hold a directory for storing generated viewdefs
 - [ ] testing :genview with example2.jl:
-  - [ ] person view
+  - [X] person view
     ```julia
-    includet("samples/src/example1.jl")
     Jus.start(Person(name="Fred", address="123"))
     ```
   - [ ] vector of people (generated to use listeditor presenter)
