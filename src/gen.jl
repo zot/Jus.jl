@@ -116,8 +116,8 @@ const GEN_SHOW = """
 const GEN_FIELD = """
 <div class='flex flex-col w-80'>
   <fast-text-field{{#first}}
-    autofocus
-    {{/first}}appearance='filled'
+    autofocus{{/first}}
+    appearance='filled'
     data-value='{{field}}'>{{name}}</fast-text-field>
 </div>
 """

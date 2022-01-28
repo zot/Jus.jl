@@ -3,7 +3,8 @@ const NAME = r"^\pL\p{Xan}*$"
 
 const moduledir = pathof(Jus)
 const pkgdir = moduledir !== nothing ? dirname(moduledir) : pwd()
-const FILE_PATH = [joinpath(pkgdir, "html")]
+println("PKGDIR:", pkgdir)
+const FILE_PATH = [joinpath(pkgdir, "../html")]
 
 function resolve(cmd::JusCmd, vars, str)
     if str == "?"

@@ -336,6 +336,7 @@ export class Views {
     const name = namespace ? `${type}-${namespace}` : type;
     let def;
     
+    namespace = namespace || "";
     if (this.viewdefs[name]) return this.viewdefs[name];
     if (!type) return this.registerViewdef(name, parseHtml(`<${defaultNodeType}></${defaultNodeType}>`));
     if (def = this.parseGenViewdef(rootVar, name)) return def;
