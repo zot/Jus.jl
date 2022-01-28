@@ -54,7 +54,7 @@ function generate_viewdef(cmd::VarCommand)
 end
 
 """
-    generate(item, namespace)
+    generate_v(item, namespace)
 
 generate a viewdef for item
 namespace indicates what type of view to generate (default is editor, could

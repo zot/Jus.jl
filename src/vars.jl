@@ -75,21 +75,21 @@ function within(cfg::Config, var::Var, ids::Set{ID})
 end
 
 function allvars(cfg::Config, vars...)
-    generate() do yield
-        traverse(id::ID) = traverse(cfg[id])
-        function traverse(var::Var)
-            yield(var)
-            for (_, v) in var.namedchildren
-                traverse(v)
-            end
-            for v in var.indexedchildren
-                traverse(v)
-            end
+    results = []
+    traverse(id::ID) = traverse(cfg[id])
+    function traverse(var::Var)
+        push!(results, var)
+        for (_, v) in var.namedchildren
+            traverse(v)
         end
-        for v in vars
+        for v in var.indexedchildren
             traverse(v)
         end
     end
+    for v in vars
+        traverse(v)
+    end
+    results
 end
 
 isemptyid(id) = id isa ID && id.number == 0
