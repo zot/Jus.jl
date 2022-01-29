@@ -7,7 +7,7 @@ const PATH_COMPONENT = r"^([-[:alnum:]]+|@)/([0-9]+)$"
 const VAR_NAME = r"^([0-9]+|\pL\p{Xan}*)(?::((\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(?:,(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?)*))?$"
 const METAPROP = r"(\pL\p{Xan}*)(?:=((?:[^,]|\\,)*))?(,|$)"
 const ARRAY_INDEX = r"[1-9][0-9]*"
-const JPATH_COMPONENT = r"^([\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*|[1-9][0-9]*)(?:((?:\.[\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*)*)\(\))?$"
+const JPATH_COMPONENT = r"^([\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*|[1-9][0-9]*)(?:((?:\.[\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_][\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}\p{Nl}\p{Sc}\p{So}_!\p{Nd}\p{No}\p{Mn}\p{Mc}\p{Me}\p{Sk}\p{Pc}]*)*)(?:\(\))?)?$"
 
 oid(cmd::JusCmd, obj) = oid(connection(cmd), obj)
 function oid(con::Connection, obj)
@@ -177,10 +177,9 @@ end
 
 addvar(con::Connection, var::Var) = push!(con.vars, var)
 
-function typename(value)
-    type = typeof(value)
-    "$(Base.parentmodule(type)).$type"
-end
+typename(value) = typename(typeof(value))
+
+typename(type::Type) = "$(Base.parentmodule(type)).$type"
 
 function set_type(cmd::VarCommand)
     name = typename(cmd.var.internal_value)
@@ -192,7 +191,10 @@ end
 qualify(args) = length(args) == 1 ? Symbol(args[1]) : :($(qualify(args[1:end-1])).$(Symbol(args[end])))
 
 function create_from_metadata(cmd::VarCommand)
-    cmd.var.internal_value = cmd.var.value = Main.eval(:($(qualify(split(cmd.var.metadata[:create], ".")))()))
+    type = cmd.var.metadata[:create]
+    match(JPATH_COMPONENT, type) === nothing && throw("bad type for create: $type for $(cmd.var)")
+    # safe to eval because type is just "ident(.ident)*"
+    cmd.var.internal_value = cmd.var.value = Main.eval(:($(qualify(split(type, ".")))()))
     @debug("@@@ CREATED: $(repr(cmd.var.value))")
     VarCommand(cmd, arg = cmd.var.value)
     set_type(cmd)
@@ -215,11 +217,12 @@ function set_path_from_metadata(cmd::VarCommand)
         else
             m = match(JPATH_COMPONENT, el)
             m === nothing && throw("Bad path component in $(cmd.var): $(el)")
-            if m[2] !== nothing
+            if endswith(el, "()")
                 try
+                    # safe to eval because m[1] * m[2] is just "ident(.ident)*"
                     push!(path, Main.eval(Meta.parse(m[1] * m[2])))
                 catch err
-                    rethrow(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): $(m[1] * m[2])"))
+                    rethrow(CmdException(:path, cmd, "Bad path for variable $(cmd.var.name): '$(m[1] * m[2])'"))
                 end
             elseif match(ARRAY_INDEX, m[1]) !== nothing
                 push!(path, parse(Int, m[1]))
@@ -287,6 +290,7 @@ function set_path(cmd::VarCommand)
     !cmd.var.writeable && throw(CmdException(:writeable_error, cmd, "variable $(cmd.var) is not writeable"))
     cur = basic_get_path(cmd, cmd.var.path[1:end - 1])
     el = cmd.var.path[end]
+    cmd.arg = cmd.var.value_conversion(cmd.arg)
     if cur === nothing
         throw(CmdException(:path, cmd, "error setting field $(el) in path $(cmd.var.path) for $(cmd.var)"))
     elseif el isa Symbol

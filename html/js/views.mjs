@@ -1,10 +1,12 @@
-import {last} from './jus.mjs'
+import {last, defer} from './jus.mjs'
 
 export const DEFAULT_METADATA = /(^.*):(?:(.*),)?defaults(?:,(.*))?$|^([^:]+)$/;
 export const EVENT_BINDING = /^data-on-(.*)$/;
 export const BIND_METADATA = /(^.*):(?:(.*),)?(get|set|prop)=([^,]+)(?:,(.*))?$/;
 export const ADJUST_METADATA = /(^.*):(?:(.*),)?(adjustIndex())(?:,(.*))?$/;
 export const PRIORITY_METADATA = /(^.*):(?:(.*),)?(priority)=([^,]+)(?:,(.*))?$/;
+
+let disableInst = 1;
 
 function clean(word) {
   return last(word.match(/^[. ]*([^:()]*)(\(\))?$/)[1].split(" "))
@@ -55,7 +57,7 @@ export class View {
   children = [];
   nodes = new Set();
   selectableNodes = [];
-  disablingSelection = false;
+  disablingSelection = 0;
   defaultNodeType;
 
   constructor(rootVar, namespace, parent, defaultNodeType = 'div') {
@@ -113,7 +115,10 @@ export class View {
   }
 
   async handleDisableSelections(func, ctx) {
+    // NOTE: this only happens in the top node
+    const inst = disableInst++;
     this.disablingSelection++;
+    //console.log(`>> INC disabling selection[${inst}]: ${this.disablingSelection}`, this);
     ctx?.jus_events?.selectionHandler && ctx.jus_events?.selectionHandler.disable()
     try {
       const result = func();
@@ -122,6 +127,7 @@ export class View {
     } finally {
       ctx?.jus_events?.selectionHandler && ctx.jus_events?.selectionHandler.enable()
       this.disablingSelection--;
+      //console.log(`<< DEC disabling selection[${inst}]: ${this.disablingSelection}`, this);
       !this.disablingSelection && this.restoreSelections();
     }
   }
@@ -189,7 +195,7 @@ export class View {
     await this.scanAttr(el, 'data-text', 'access=r', (v, node)=> v.observe(()=> node.textContent = v.value));
     await this.scanAttr(el, 'data-value', node=> Views.isTextField(node) ? 'access=rw,blur' : 'access=rw', (v, node)=> {
       v.observe(()=> {
-        if (Views.isTextField(node)) {
+        if ('value' in node) {
           node.value = v.value;
         } else {
           node.textContent = v.value;
@@ -242,7 +248,7 @@ export class View {
       this.disableSelections(()=> updateFromEvent(node, get, set, v));
     });
     node.addEventListener(evt, ()=> {
-      if (this.disablingSelection) return;
+      if (this.top().disablingSelection) return;
       let value = node[get];
       if (v.adjustIndex) value++;
       v.value != value && v.set(value);
@@ -344,6 +350,7 @@ export class Views {
     if (def = await this.fetchViewdefNamed(type)) return def;
     if (!rootVar.metadata.genview) {
       await rootVar.setmeta("genview", namespace);
+      await defer(); // wait until after handling the update
       console.log("GENERATED VIEW FOR", rootVar);
       if (def = this.parseGenViewdef(rootVar, name)) return def;
     }

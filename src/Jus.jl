@@ -8,10 +8,10 @@ using HTTP
 using Pkg
 using DefaultApplication
 using Sockets
+using Sockets: TCPServer
 using Mustache
 
-import Base.@kwdef, Base.Iterators.flatten
-import Base.Iterators.flatten
+import Base.@kwdef
 
 include("types.jl")
 include("vars.jl")
@@ -19,6 +19,8 @@ include("server.jl")
 include("gen.jl")
 
 export exec, serve, input, output, set_metadata, Config, present, start
+
+const CONVERT_ENUM = r"^enum:(.*)$"
 
 verbose = false
 
@@ -178,24 +180,36 @@ function exec(serverfunc, args::Vector{String}; config = Config())
 end
 
 """
-    start(port = 0, host = "0.0.0.0", type = Nothing)
+    start(data | type;
+        port = 0, host = "0.0.0.0", dirs = [], async = true, metadata = (;),
+        create_dir = "", output_dir = create_dir)
+    start(config, server, data; dirs = [], async = true, metadata = (;), create_dir = "")
 
 Starts Jus in a new task on host and port (port 0 means pick a random port)
 and, if given a type, opens a browser page editing the type.
 
+output_dir specifies a directory (if any) in which to place generated viewdefs
+create_dir specifies a directory to create and also supplies the default value for output_dir
+
 Returns the config.
 """
-function start(data = nothing; port = 0, host = nothing, dirs=[], async=true, metadata=(;))
+function start(data = nothing;
+               port = 0, host = nothing, dirs = [], async = true, metadata = (;),
+               create_output = "", output_dir = create_output)
+    port, socket = host === nothing ? Sockets.listenany(port) : Sockets.listenany(IPv4(host), port)
+    confhost = getsockname(socket)[1]
+    hostname = host !== nothing ? host : confhost == ip"0.0.0.0" ? "localhost" : string(confhost)
+    println("HOST: $(confhost)")
+    start(Config(; output_dir, port, host = confhost, hostname), socket, data; dirs, async, metadata, create_output)
+end
+
+function start(config::Config, socket::TCPServer, data; dirs = [], async = true, metadata = (;),
+               create_output = "")
+    create_output != "" && mkpath(create_output)
+    data !== nothing && data !== Nothing && present(config, data, metadata)
     for dir in dirs
         add_file_dir(dir)
     end
-    config = Config()
-    port, socket = host === nothing ? Sockets.listenany(port) : Sockets.listenany(IPv4(host), port)
-    config.port = port
-    config.host = getsockname(socket)[1]
-    config.hostname = host !== nothing ? host : config.host == ip"0.0.0.0" ? "localhost" : string(config.host)
-    println("HOST: $(config.host)")
-    data !== nothing && data !== Nothing && present(config, data, metadata)
     if async
         @async server(config, socket)
     else
@@ -373,6 +387,18 @@ default_handle(value, cmd::VarCommand{:metadata, (:observe,)}) =
     push!(cmd.connection.observing, cmd.var.id)
 
 default_handle(value, cmd::VarCommand{:metadata, (:genview,)}) = generate_viewdef(cmd)
+
+function default_handle(value, cmd::VarCommand{:metadata, (:convert,)})
+    m = match(CONVERT_ENUM, cmd.var.metadata[:convert])
+    if m !== nothing && match(JPATH_COMPONENT, m[1]) !== nothing && !endswith(m[1], "()")
+        # safe to eval because m[1] is just "ident(.ident)*"
+        values = Dict(lowercase(string(inst)) => inst for inst in instances(Main.eval(Meta.parse(m[1]))))
+        cmd.var.value_conversion = v-> values[lowercase(v)]
+        println("###\n### CREATED CONVERTER $(cmd.var.metadata[:convert]) FOR $(cmd.var)")
+    else
+        throw("Could not create converter $(cmd.var.metadata[:convert]) for $(cmd.var)")
+    end
+end
 
 function default_handle(value, cmd::VarCommand{:set})
     #println("@@@ BASIC SET $(cmd.var.id): $(repr(cmd))")

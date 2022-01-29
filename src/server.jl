@@ -1,10 +1,6 @@
 const NUM = r"^[0-9]+$"
 const NAME = r"^\pL\p{Xan}*$"
-
-const moduledir = pathof(Jus)
-const pkgdir = moduledir !== nothing ? dirname(moduledir) : pwd()
-println("PKGDIR:", pkgdir)
-const FILE_PATH = [joinpath(pkgdir, "../html")]
+const FILE_PATH = [joinpath(PKGDIR, "html")]
 
 function resolve(cmd::JusCmd, vars, str)
     if str == "?"
@@ -78,6 +74,7 @@ function command(cmd::JusCmd{:setmeta})
     parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
     set_metadata(VarCommand(cmd, :setmeta, (), var), prop, value)
     route(parentvalue, VarCommand(cmd, :metadata, (prop,), var))
+    output(cmd; result = [])
 end
 
 function command(cmd::JusCmd{:set})
@@ -136,7 +133,8 @@ function command(cmd::JusCmd{:get})
         var, _ = findvar(cmd, false, vars, path)
         push!(vars, var)
     end
-    output(cmd, result = [flatten(map(v-> (json(cmd, v.id), json(cmd, v.value)), vars))...])
+    # return a list of [id1, value1, id2, value2, ...]
+    [e for v in vars for p in (json(cmd, v.id), json(cmd, v.value)) for e in p]
 end
 
 function command(cmd::JusCmd{:observe})
@@ -148,7 +146,7 @@ function command(cmd::JusCmd{:observe})
     @debug("@ OBSERVE ARGS: $(cmd.args)")
     union!(connection(cmd).observing, vars)
     @debug("OBSERVED VARS: $(repr(map(v-> v.id, allvars(cmd.config, connection(cmd).observing...))))")
-    observed = [flatten(map(id-> [json(id), cmd.config[id].value], [connection(cmd).observing...]))...]
+    observed = (; ((Symbol(json(id)), cmd.config[id].value) for id in connection(cmd).observing)...)
     @debug("OBSERVED: $(repr(observed))")
     for id in vars
         var = cmd.config[id]

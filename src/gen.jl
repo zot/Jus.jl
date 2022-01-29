@@ -1,11 +1,23 @@
+# viewdef generation
+
 using Mustache
 
-# viewdef generation
+const GEN_FIELDS = """
+<div>{{#fields}}
+  {{{.}}}
+{{/fields}}</div>
+"""
+
+const GEN_SHOW = """
+<div data-text='repr()'></div>
+"""
 
 get_path(cmd::VarCommand, var::Var) = get_path(VarCommand{:get, ()}(cmd; var))
 
-@kwdef mutable struct ListEditor
-    #var::Var
+struct Field{namespace, owner, field_type, field, first}
+end
+
+@kwdef mutable struct ListEditor{Namespace}
     id = 1
     name = ""
     list
@@ -39,60 +51,106 @@ add_enabled(ed::ListEditor) = list_type(ed) !== nothing && ed.add_enabled()
 edit_enabled(ed::ListEditor) = ed.selection !== nothing
 
 selection_index(ed::ListEditor) = something(findfirst(x-> x == ed.selection, ed.list), 0)
-function selection_index(ed::ListEditor, index::Number)
-    println("SELECTING $index")
-    show_person(app, 1 <= index <= length(app.people) ? app.people[index] : nothing)
-end
+selection_index(ed::ListEditor, index::Number) =
+    selection(ed, get(ed.list, index, nothing))
+
+selection(ed::ListEditor, item) = ed.selection = item
 
 show(cmd::VarCommand, ed::ListEditor) = foreach(e-> show(cmd, e), ed.fields)
 
 function generate_viewdef(cmd::VarCommand)
     var = cmd.var
     (var.internal_value === nothing || !haskey(var.metadata, :genview)) && return
-    println("GENERATING VIEWDEF:\n", generate_v(typeof(var.internal_value), var.metadata[:genview]))
-    set_metadata(cmd, :viewdef, generate_v(typeof(var.internal_value), var.metadata[:genview]))
+    namespace = var.metadata[:genview]
+    viewdef = generate_viewdef(cmd, typeof(var.internal_value), Symbol(namespace))
+    println("GENERATED VIEWDEF:\n", viewdef)
+    set_metadata(cmd, :viewdef, viewdef)
+    if cmd.config.output_dir != ""
+        filebase = "$(typename(cmd.var.internal_value))"
+        namespace != "" && (filebase *= "-$namespace")
+       open(joinpath(cmd.config.output_dir, "$filebase.html"); write=true) do io write(io,  viewdef) end
+    end
 end
 
 """
-    generate_v(item, namespace)
+    generate_viewdef(item, namespace)
 
 generate a viewdef for item
 namespace indicates what type of view to generate (default is editor, could
 be list, link, etc.)
 """
-generate_v(ed::ListEditor, _ns) = Mustache.render(GEN_LIST, tmpldata(ed))
-function generate_v(::Type{T}, _ns) where T
+function generate_viewdef(cmd::VarCommand, ::Type{T}, ns::Symbol = Symbol("")) where T
     !isstructtype(T) && return GEN_SHOW
-    render(GEN_FIELDS, (; fields = [generate_field(T, field, i == 1)
-                                     for (i, field) in enumerate(fieldnames(T))]))
+    render(GEN_FIELDS, (; fields = [gen_field(cmd, Field{ns, T, field, fieldtype(T, field), i == 1}())
+                                    for (i, field) in enumerate(fieldnames(T))]))
 end
 
-generate_field(owner::Type, field::AbstractString, first) = generate_field(owner, Symbol(field), first)
+function template(cmd::VarCommand, template, namespace)
+    k = (Symbol(template), Symbol(namespace))
+    if !haskey(cmd.config.templates, k)
+        name = string(namespace) == "" ? template : "$template-$namespace"
+        cmd.config.templates[k] = read(joinpath(cmd.config.templates_dir, "$name.html"), String)
+    end
+    cmd.config.templates[k]
+end
 
-generate_field(owner::Type, field::Symbol, first) =
-    generate_field(owner, fieldtype(owner, field), field, first)
+#generate_viewdef(cmd::VarCommand, ed::ListEditor; ns) =
+#    Mustache.render(template(cmd, :list, ns), tmpldata(ed))
 
-generate_field(owner::Type, ::Type{<: Vector}, field, first) =
-    render(GEN_LIST_FIELD, (; gen_introspect(owner, field)..., name = pretty(field), first))
+"""
+    gen_field(cmd, Field{namespace, owner, field, fieldType, first}
 
-generate_field(owner::Type, ::Type{<: Union{AbstractString, Number}}, field, first) =
-    render(GEN_FIELD, (; gen_introspect(owner, field)..., name = pretty(field), first))
+Generate a field; override this to customize a particular field or type of field.
 
-#generate_field(::Type{T <: Bool}, field, first) =
+Generated field types: Vector, Enum, AbstractString, Number
+"""
+# radio button
+function gen_field(cmd::VarCommand, fld::Field{ns, owner, field, field_type, first}) where {
+    ns, owner, field, field_type <: Enum, first
+}
+    println("FIELD TYPE: $(field_type)")
+    render(template(cmd, :radio, ns),
+           (; introspect(fld)...,
+            type = typename(field_type),
+            id = cmd.connection.sequence += 1,
+            values = [(;name = pretty(e), value = string(e)) for e in instances(field_type)]))
+end
+
+gen_field(cmd::VarCommand, fld::Field{ns, owner, field, field_type}) where {
+    ns, owner, field, field_type <: Union{AbstractString, Number}
+} =
+    render(template(cmd, :field, ns), introspect(fld))
+
+# checkbox
+#gen_field(cmd::VarCommand, ::Type{T <: Bool}, field, first) =
 #    render(GEN_CHECK, (; field, name = pretty(field), first))
 
-#generate_field(::Type{T <: Enum}, field, first) =
-#    render(GEN_RADIO, (; field, name = pretty(field), first))
+#list
+#gen_field(cmd::VarCommand, ::Field{ns, owner, field, field_type, first}) where {
+#    ns, owner, field, field_type <: Vector, first
+#} =
+#    render(template(cmd, :list_field, ns),
+#           (; gen_introspect(owner, field)...,
+#            name = pretty(field),
+#            first))
 
-function gen_introspect(T::Type, field)
+"""
+    introspect(fld::Field)
+
+computes PATH, PRETTY_NAME, and FIRST for fld
+returns (; field = PATH, name = PRETTY_NAME, first = FIRST)
+"""
+function introspect(::Field{_ns, owner, field, ft, first}) where {_ns, owner, field, ft, first}
     try
-        println("CHECKING METHODS FOR $(Symbol(field))")
-        func = parentmodule(T).eval(Symbol(field))
-        println("FUNC: $func")
-        (hasmethod(func, (T,)) ||
-            hasmethod(func, (VarCommand, T))) && return (; field = "$field()")
-    catch err end
-    (; field)
+        println("CHECKING METHODS FOR $field")
+        func = parentmodule(owner).eval(field)
+        println("FUNC: $func$((hasmethod(func, (owner,)) ||
+            hasmethod(func, (VarCommand, owner))) ? " [getter]" : "")")
+        (hasmethod(func, (owner,)) ||
+            hasmethod(func, (VarCommand, owner))) && return (; field = "$field()")
+    catch
+    end
+    (; field, name = pretty(field), first)
 end
 
 tmpldata(ed::ListEditor) = to_dict((;
@@ -118,59 +176,3 @@ end
 
 function edit_list_field()
 end
-
-const GEN_FIELDS = """
-<div>{{#fields}}
-  {{{.}}}
-{{/fields}}</div>
-"""
-
-const GEN_SHOW = """
-<div data-text='repr()'></div>
-"""
-
-const GEN_FIELD = """
-<div class='flex flex-col w-80'>
-  <fast-text-field{{#first}}
-    autofocus{{/first}}
-    appearance='filled'
-    data-value='{{field}}'>{{name}}</fast-text-field>
-</div>
-"""
-
-const GEN_LIST_FIELD = """
-<div class='flex flex-col w-80'>
-  <fast-button data-click='{{field}} edit_list_field()'>{{name}}</div>
-</div>
-"""
-
-const GEN_LIST = """
-<div class='flex flex-row items-center w-100'>
-  <div class="grow relative px-6 pt-10 pb-8 bg-slate-500 shadow-xl ring-1 ring-gray-900/5 sm:max-w-lg sm:mx-auto sm:rounded-lg sm:px-10 self-stretch w-80">
-    <div class="max-w-md mx-auto">
-      <label id='list-{{id}}' class='font-bold'>{{label}}</label>
-      <br/>
-      <div data-tooltip='new_person_tooltip' style='display: inline-block'>
-        <fast-button
-          appearance='primary'
-          data-click='create_item()'
-          data-enabled='create_item_enabled'>Add</fast-button>
-      </div>
-      <div style='display: inline-block'>
-        <fast-button appearance='primary' data-click='change_person()' data-enabled='editing_enabled'>Change</fast-button>
-      </div>
-      <div style='display: inline-block'>
-        <fast-button appearance='primary' data-click='delete_person()' data-enabled='editing_enabled'>Delete</fast-button>
-      </div>
-      <fast-listbox
-        data-attr-aria-labeledby='list-{{id}}'
-        data-list='list'
-        data-on-selected='selection_index():defaults,get=selectedIndex,set=selectedIndex,adjustIndex'
-        data-namespace='ex2-list'></fast-listbox>
-    </div>
-  </div>
-  <div class='grow self-stretch' data-class-toggle='hide_editor:class=hidden'>
-    {{fields}}
-  </div>
-</div>
-"""

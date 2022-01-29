@@ -27,7 +27,7 @@ export function init(Views) {
         if (active) {
           active--;
           view.top().disablingSelection--;
-          !view.disablingSelection && view.top().restoreSelections();
+          !view.top().disablingSelection && view.top().restoreSelections();
         }
       }
     }, "slottedOptions");

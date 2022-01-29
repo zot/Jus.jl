@@ -7,6 +7,8 @@ export Config, State, UnknownVariable, ID, Var, JusCmd, ROOT, EMPTYID, Namespace
 export parent, cancel, arg
 export PASS, FAIL, SUBSTITUTE
 
+const MODULEDIR = pathof(parentmodule(eval))
+const PKGDIR = MODULEDIR !== nothing ? dirname(dirname(MODULEDIR)) : pwd()
 const PASS = :pass
 const FAIL = :fail
 const SUBSTITUTE = :substitute
@@ -56,6 +58,7 @@ A variable:
     json_value = nothing
     refresh_exception = nothing
     error_count = 0
+    value_conversion = identity
 end
 
 @kwdef mutable struct Namespace
@@ -84,72 +87,36 @@ end
     Config
 
 Singleton for this program's state.
-    namespace: this program's unique namespace, assigned by the server
-    nextId: the next available id in this namespace
-    vars: all known variables
-    changes: pending changes to the state to be broadcast to observers
+    namespace:      this program's unique namespace, assigned by the server
+    nextId:         the next available id in this namespace
+    vars:           all known variables
+    changes:        pending changes to the state to be broadcast to observers
+    templates_dir:  directory for looking up viewdef generation templates
+    output_dir:     optional path of directory in which to place generated viewdefs
 """
-mutable struct Config
-    namespace::Namespace
-    vars::Dict{ID, Var}
-    host::Sockets.IPv4
-    hostname::AbstractString
-    port::UInt16
-    server::Bool
-    diag::Bool
-    proxy::Bool
-    verbose::Bool
-    cmd::AbstractString
-    args::Vector{AbstractString}
-    client::AbstractString
-    nextmsg::Int
-    namespaces::Dict{AbstractString, Namespace}
-    serverfunc::Function
-    connections::Dict{Any, Connection}
-    changes::Dict{ID, Dict{Symbol, Any}}
-    init_connection::Function
-    function Config(;
-                    namespace::Namespace = Namespace("ROOT", "", 0),
-                    vars::Dict{ID, Var} = Dict{ID, Var}(),
-                    host::IPv4 = ip"0.0.0.0",
-                    hostname::AbstractString = "localhost",
-                    port::UInt16 = UInt16(8181),
-                    server::Bool = false,
-                    diag::Bool = false,
-                    proxy::Bool = false,
-                    verbose::Bool = false,
-                    cmd::AbstractString = "",
-                    args::Vector{T} = String[],
-                    client::AbstractString = "",
-                    nextmsg::Int = 0,
-                    namespaces::Dict{AbstractString, Namespace} = Dict{AbstractString, Namespace}(), # namespaces and their secrets
-                    serverfunc::Function = serve,
-                    connections::Dict{Any, Connection} = Dict{Any, Connection}(),
-                    changes::Dict{ID, Dict{Symbol, Any}} = Dict{ID, Dict{Symbol, Any}}(),
-                    init_connection::Function = con-> (),
-                    ) where {T <: AbstractString}
-        namespaces[namespace.name] = namespace
-        new(
-            namespace,
-            vars,
-            host,
-            hostname,
-            port,
-            server,
-            diag,
-            proxy,
-            verbose,
-            cmd,
-            args,
-            client,
-            nextmsg,
-            namespaces,
-            serverfunc,
-            connections,
-            changes,
-            init_connection,
-        )
-    end
+@kwdef mutable struct Config
+    namespace::Namespace = Namespace("ROOT", "", 0)
+    vars::Dict{ID, Var} = Dict{ID, Var}()
+    host::IPv4 = ip"0.0.0.0"
+    hostname::AbstractString = "localhost"
+    port::UInt16 = UInt16(8181)
+    server::Bool = false
+    diag::Bool = false
+    proxy::Bool = false
+    verbose::Bool = false
+    cmd::AbstractString = ""
+    args::Vector{<: AbstractString} = String[]
+    client::AbstractString = ""
+    nextmsg::Int = 0
+    namespaces::Dict{AbstractString, Namespace} = Dict(namespace.name => namespace)
+    serverfunc::Function = serve
+    connections::Dict{Any, Connection} = Dict{Any, Connection}()
+    changes::Dict{ID, Dict{Symbol, Any}} = Dict{ID, Dict{Symbol, Any}}()
+    init_connection::Function = con-> ()
+    output_dir::AbstractString = ""
+    templates_dir::AbstractString = joinpath(PKGDIR, "templates")
+    templates::Dict{Tuple{Symbol, Symbol}, AbstractString} =
+        Dict{Tuple{Symbol, Symbol}, AbstractString}()
 end
 
 @kwdef mutable struct JusCmd{NAME}

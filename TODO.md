@@ -1,9 +1,9 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
-- [ ] put the generation templates into a directory
-  - [ ] make Config have a directory path for templates to developers can override it
-  - [ ] add a Config.store_generated field to hold a directory for storing generated viewdefs
+- [X] put the generation templates into a directory
+  - [X] make Config have a directory path for templates to developers can override it
+  - [X] add a Config.store_generated field to hold a directory for storing generated viewdefs
 - [ ] testing :genview with example2.jl:
   - [X] person view
     ```julia

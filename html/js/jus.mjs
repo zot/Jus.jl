@@ -1,5 +1,9 @@
 export function last(x) {return x[x.length - 1]}
 
+export function defer() {
+  return new Promise((accept)=> setTimeout(accept, 1));
+}
+
 export class Jus {
   addr;
   namespace;
