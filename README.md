@@ -1,5 +1,7 @@
 # Jus
 
+*Jus (n): essence, juice, black coffee, electicity*
+
 Jus is a presentation engine for Julia to support "no-code
 GUIs". Its paradigm-neutral protocol allows you to frontend it with
 HTML, console UIs, or even a 3D engine like Minecraft or Unreal.

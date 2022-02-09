@@ -128,6 +128,8 @@ end
     JusCmd(config, ws, namespace, args::Vector) =
         new{Symbol(lowercase(args[1]))}(config, ws, namespace, args[2:end], false)
 end
+JusCmd(cfg::Config, con::Connection, name::AbstractString) = JusCmd(cfg, con, [name])
+JusCmd(cfg::Config, con::Connection, args::Vector) = JusCmd(cfg, con.ws, con.namespace, args)
 
 connection(cmd::JusCmd) = get(cmd.config.connections, cmd.ws, nothing)
 

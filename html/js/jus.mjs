@@ -72,13 +72,15 @@ export class Jus {
 
   async handleMessage(msg) {
     const obj = JSON.parse(msg.data);
-    const handler = this.handlers.shift();
+    const handler = obj.command && this.handlers.shift();
 
     console.info("<<< RECEIVED MESSAGE:", obj);
-    handler.filter(obj);
+    handler?.filter(obj);
     'update' in obj && setTimeout(()=> this.update(obj.update))
-    if ('error' in obj) handler.reject(obj.error);
-    else if ('result' in obj) handler.accept(obj.result, obj);
+    if (handler) {
+      if ('error' in obj) handler.reject(obj.error);
+      else if ('result' in obj) handler.accept(obj.result, obj);
+    }
   }
 
   ondisconnect(func) {

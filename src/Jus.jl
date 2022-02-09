@@ -18,8 +18,6 @@ include("vars.jl")
 include("server.jl")
 include("gen.jl")
 
-export exec, serve, input, output, set_metadata, Config, present, start
-
 const CONVERT_ENUM = r"^enum:(.*)$"
 
 verbose = false
@@ -216,6 +214,14 @@ function start(config::Config, socket::TCPServer, data; dirs = [], async = true,
         server(config, socket)
     end
     config
+end
+
+function refresh(config::Config)
+    for con in values(config.connections)
+        if !con.refresh_queued && !haskey(con.pending_result, :result)
+            finish_command(JusCmd(config, con, "refresh"))
+        end
+    end
 end
 
 function present(config::Config, data, metadata = (;))

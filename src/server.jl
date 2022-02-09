@@ -160,9 +160,10 @@ function command(cmd::JusCmd{:observe})
            ) for vid in connection(cmd).observing))
 end
 
-function output(cmd::JusCmd; data...)
+function output(cmd::JusCmd{NAME}; data...) where NAME
     con = connection(cmd)
-    con.pending_result = merge(con.pending_result, (; data...))
+    d = haskey(data, :result) ? (; data..., command = NAME) : (; data...)
+    con.pending_result = merge(con.pending_result, d)
 end
 
 function finish_command(cmd::JusCmd)
