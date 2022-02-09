@@ -1,0 +1,8 @@
+<div class='flex flex-col w-80'>
+  <fast-radio-group
+    data-value='{{field}}'
+    data-on-change='{{field}}:defaults,get=value,set=value,convert=enum:{{type}}'>
+    <label slot='label' class='font-bold text-white'>{{name}}</label>
+    {{#values}}<fast-radio value='{{value}}'>{{name}}</fast-radio>{{/values}}
+  </fast-radio-group>
+</div>

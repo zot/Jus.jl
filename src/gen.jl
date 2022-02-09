@@ -14,7 +14,7 @@ const GEN_SHOW = """
 
 get_path(cmd::VarCommand, var::Var) = get_path(VarCommand{:get, ()}(cmd; var))
 
-struct Field{namespace, owner, field_type, field, first}
+struct Field{owner, namespace, field, field_type, first}
 end
 
 @kwdef mutable struct ListEditor{Namespace}
@@ -81,7 +81,7 @@ be list, link, etc.)
 """
 function generate_viewdef(cmd::VarCommand, ::Type{T}, ns::Symbol = Symbol("")) where T
     !isstructtype(T) && return GEN_SHOW
-    render(GEN_FIELDS, (; fields = [gen_field(cmd, Field{ns, T, field, fieldtype(T, field), i == 1}())
+    render(GEN_FIELDS, (; fields = [gen_field(cmd, Field{T, ns, field, fieldtype(T, field), i == 1})
                                     for (i, field) in enumerate(fieldnames(T))]))
 end
 
@@ -94,53 +94,64 @@ function template(cmd::VarCommand, template, namespace)
     cmd.config.templates[k]
 end
 
+function all_presentable(t::Type)
+####### HERE    
+end
+
 #generate_viewdef(cmd::VarCommand, ed::ListEditor; ns) =
 #    Mustache.render(template(cmd, :list, ns), tmpldata(ed))
 
 """
-    gen_field(cmd, Field{namespace, owner, field, fieldType, first}
+    gen_field(cmd, owner_type, Field{owner, namespace, field, field_type, first})
 
 Generate a field; override this to customize a particular field or type of field.
 
 Generated field types: Vector, Enum, AbstractString, Number
 """
 # radio button
-function gen_field(cmd::VarCommand, fld::Field{ns, owner, field, field_type, first}) where {
-    ns, owner, field, field_type <: Enum, first
+function gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
+    owner, ns, field, field_type <: Enum, first
 }
     println("FIELD TYPE: $(field_type)")
     render(template(cmd, :radio, ns),
-           (; introspect(fld)...,
+           (;
+            introspect(fld)...,
             type = typename(field_type),
             id = cmd.connection.sequence += 1,
             values = [(;name = pretty(e), value = string(e)) for e in instances(field_type)]))
 end
 
-gen_field(cmd::VarCommand, fld::Field{ns, owner, field, field_type}) where {
-    ns, owner, field, field_type <: Union{AbstractString, Number}
+# text field
+gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
+    owner, ns, field, field_type <: Union{AbstractString, Number}, first
 } =
-    render(template(cmd, :field, ns), introspect(fld))
+    render(template(cmd, :textfield, ns), introspect(fld))
 
 # checkbox
-#gen_field(cmd::VarCommand, ::Type{T <: Bool}, field, first) =
-#    render(GEN_CHECK, (; field, name = pretty(field), first))
+gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
+    owner, ns, field, field_type <: Bool, first
+} =
+    render(template(cmd, :checkbox, ns),
+           (;
+            introspect(fld)...,
+            type = typename(field_type)))
 
 #list
-#gen_field(cmd::VarCommand, ::Field{ns, owner, field, field_type, first}) where {
+#gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
 #    ns, owner, field, field_type <: Vector, first
 #} =
 #    render(template(cmd, :list_field, ns),
-#           (; gen_introspect(owner, field)...,
+#           (; gen_introspect(fld)...,
 #            name = pretty(field),
 #            first))
 
 """
-    introspect(fld::Field)
+    introspect(fld::Type{Field})
 
 computes PATH, PRETTY_NAME, and FIRST for fld
 returns (; field = PATH, name = PRETTY_NAME, first = FIRST)
 """
-function introspect(::Field{_ns, owner, field, ft, first}) where {_ns, owner, field, ft, first}
+function introspect(::Type{Field{owner, _ns, field, ft, first}}) where {owner, _ns, field, ft, first}
     try
         println("CHECKING METHODS FOR $field")
         func = parentmodule(owner).eval(field)

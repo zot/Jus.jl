@@ -8,6 +8,7 @@ import Base.@kwdef
     name::String
     address::String
     favorite_color::Color
+    working::Bool
 end
 
 const people = Person[]
@@ -29,8 +30,17 @@ function favorite_color(p::Person, color)
     p.favorite_color = color
 end
 
+working(p::Person) = p.working
+function working(p::Person, value)
+    println("SETTING WORKING OF $p TO $value")
+    p.working = value
+end
+
 Jus.start(
     Person(
         name="Fred",
         address="123",
-        favorite_color=blue); create_output="/tmp/gen")
+        favorite_color=blue,
+        working=false,
+    );
+    create_output="/tmp/gen")

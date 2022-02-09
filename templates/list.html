@@ -1,0 +1,28 @@
+<div class='flex flex-row items-center w-100'>
+  <div class="grow relative px-6 pt-10 pb-8 bg-slate-500 shadow-xl ring-1 ring-gray-900/5 sm:max-w-lg sm:mx-auto sm:rounded-lg sm:px-10 self-stretch w-80">
+    <div class="max-w-md mx-auto">
+      <label id='list-{{id}}' class='font-bold'>{{label}}</label>
+      <br/>
+      <div data-tooltip='new_person_tooltip' style='display: inline-block'>
+        <fast-button
+          appearance='primary'
+          data-click='create_item()'
+          data-enabled='create_item_enabled'>Add</fast-button>
+      </div>
+      <div style='display: inline-block'>
+        <fast-button appearance='primary' data-click='change_person()' data-enabled='editing_enabled'>Change</fast-button>
+      </div>
+      <div style='display: inline-block'>
+        <fast-button appearance='primary' data-click='delete_person()' data-enabled='editing_enabled'>Delete</fast-button>
+      </div>
+      <fast-listbox
+        aria-labeledby='list-{{id}}'
+        data-list='list'
+        data-on-selected='selection_index():defaults,get=selectedIndex,set=selectedIndex,adjustIndex'
+        data-namespace='ex2-list'></fast-listbox>
+    </div>
+  </div>
+  <div class='grow self-stretch' data-class-toggle='hide_editor:class=hidden'>
+    {{fields}}
+  </div>
+</div>

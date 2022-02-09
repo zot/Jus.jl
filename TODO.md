@@ -1,16 +1,19 @@
 # Jus
 Active varibles that bind to vanilla Julia code -- no need to implement the observer pattern
 
-- [X] put the generation templates into a directory
-  - [X] make Config have a directory path for templates to developers can override it
-  - [X] add a Config.store_generated field to hold a directory for storing generated viewdefs
+- [ ] make Browser struct and make `start` pop one up with the data
+  - [ ] make data-history so browser can integrate with history on the front end
+- [ ] remove Field struct and use keyword args instead
 - [ ] testing :genview with example2.jl:
   - [X] person view
     ```julia
     Jus.start(Person(name="Fred", address="123"))
     ```
-  - [ ] vector of people (generated to use listeditor presenter)
-
+  - [X] strings -- text field
+  - [X] enums -- radio button
+  - [ ] bools -- checkbox
+  - [ ] numbers -- number spinner
+  - [ ] vectors -- (using a listeditor presenter)
 - [ ] fix deleting people in sample app
 - [ ] implement `delete id` that deletes a var and all its children
 - [ ] rename disableSelection to disableUpdates
@@ -20,6 +23,9 @@ Active varibles that bind to vanilla Julia code -- no need to implement the obse
   - [ ] use methodswith to find methods that take a VarCmd{:set} and the datatype:
         https://docs.julialang.org/en/v1/stdlib/InteractiveUtils/#InteractiveUtils.methodswith
 - [ ] floating editor mode (1 or 2 additional views for PersonApp)
+- [X] put the generation templates into a directory
+  - [X] make Config have a directory path for templates to developers can override it
+  - [X] add a Config.store_generated field to hold a directory for storing generated viewdefs
 - [X] make a separate output task for each connection so that background code can update the front end
 - [X] make adjustIndex work
 - [X] make a `present` Julia function that opens a browser, plus a cmd line option to invoke it

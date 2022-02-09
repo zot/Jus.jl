@@ -102,6 +102,7 @@ export class View {
 
   async scanAttr(el, attr, defaults, action) {
     for (const node of findall(el, `[${attr}]`)) {
+      if (!node.isConnected) continue;
       this.nodes.add(node);
       if (defaults instanceof Function) defaults = defaults(node);
       action(await this.prepVar(node, node.getAttribute(attr), defaults), node);
