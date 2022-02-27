@@ -17,6 +17,7 @@ include("types.jl")
 include("vars.jl")
 include("server.jl")
 include("gen.jl")
+include("local.jl")
 
 const CONVERT_ENUM = r"^enum:(.*)$"
 
@@ -116,18 +117,22 @@ end
 
 input(ws) = JSON3.read(readavailable(ws))
 
+# no need for JSON with FakeWS
+output(ws::FakeWS, data) = put!(ws.output, data)
+input(ws::FakeWS) = take!(ws.input)
+
 function client(config::Config)
     if config.namespace.secret === "" abort("Secret required") end
     @debug("CLIENT $(config.namespace) connecting to ws//$(config.host):$(config.port)")
     HTTP.WebSockets.open("ws://$(config.host):$(config.port)") do ws
         output(ws, (namespace = config.namespace, secret = config.namespace.secret))
         output(ws, config.args)
-        result = JSON3.read(readavailable(ws)) # read one message
+        result = input(ws) # read one message
         @debug("RESULT: $(result)")
         if config.args[1] == "observe"
             @debug("READING UPDATES")
             while true
-                result = JSON3.read(readavailable(ws))
+                result = input(ws)
                 @debug("RESULT: $(result)")
             end
         end

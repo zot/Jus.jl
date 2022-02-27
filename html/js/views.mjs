@@ -193,6 +193,7 @@ export class View {
 
       new View(v, namespace, this)
     })
+    await this.scanAttr(el, 'data-var', 'access=r', ()=> {});
     await this.scanAttr(el, 'data-text', 'access=r', (v, node)=> v.observe(()=> node.textContent = v.value));
     await this.scanAttr(el, 'data-value', node=> Views.isTextField(node) ? 'access=rw,blur' : 'access=rw', (v, node)=> {
       v.observe(()=> {

@@ -27,7 +27,6 @@ json(cmd::VarCommand, value) = json(cmd.config, cmd.connection, value)
 function json(cfg::Config, con::Connection, data)
     try
         JSON3.read(JSON3.write(data))
-        #data
     catch
         if data isa AbstractArray
             map(d-> json(cfg, con, d), data)

@@ -17,6 +17,31 @@ struct UnknownVariable <:Exception
     name
 end
 
+@kwdef mutable struct FakeWS
+    isopen = true
+    input::Channel = Channel(10)
+    output::Channel = Channel(10)
+end
+
+other(ws::FakeWS) = FakeWS(input = ws.output, output = ws.input)
+
+Base.isopen(ws::FakeWS) = ws.isopen
+Base.eof(ws::FakeWS) = !isopen(ws)
+
+#Base.write(ws::FakeWS, data) = put!(ws.output, data)
+Base.write(ws::FakeWS, data) = (@debug("FAKE WRITING: $(repr(data))"); put!(ws.output, data))
+
+Base.flush(ws::FakeWS) = nothing
+
+#Base.readavailable(com::FakeWS) = take!(com.input)
+Base.readavailable(com::FakeWS) = (str = take!(com.input); @debug("FAKE READING: $(repr(str))"); str)
+
+function Base.close(com::FakeWS)
+    com.isopen = false
+    Base.close(com.input, HTTP.WebSockets.WebSocketError(1005, "Closed"))
+    Base.close(com.output, HTTP.WebSockets.WebSocketError(1005, "Closed"))
+end
+
 @kwdef mutable struct State
     servers::Dict{String, @NamedTuple{host::String,port::UInt16,pid::Int32}} = Dict()
 end

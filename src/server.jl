@@ -281,25 +281,22 @@ function serve(config::Config, ws)
     config.init_connection(con)
     @debug("Connection for $(namespace)")
     while !eof(ws)
-        string="unknown"
+        cmd = nothing
         try
             !isopen(ws) && break
-            string = readavailable(ws)
-            isempty(string) && continue
-            cmd = JSON3.read(string, Vector)
+            cmd = [input(ws)...]
             jcmd = JusCmd(config, ws, namespace, cmd)
             command(jcmd)
             finish_command(jcmd)
         catch err
             if !(err isa Base.IOError || err isa HTTP.WebSockets.WebSocketError)
                 err isa ArgumentError && println(err)
-                @error "Error handling comand $(String(string)) $(err)" exception=(err, catch_backtrace())
+                @error "Error handling comand $(cmd) $(err)" exception=(err, catch_backtrace())
             end
             break
         end
     end
     close(config, con)
-    put!(config.connections[ws].stop, true)
     @debug("CLIENT CLOSED: $(repr(namespace))")
 end
 

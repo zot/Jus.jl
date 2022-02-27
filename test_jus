@@ -1,11 +1,13 @@
 #!/bin/sh
 DIR=$(dirname $(realpath "$0"))
+ARGS="--optimize=0 --compile=min"
+
 if [ "$1" = "-v" ]; then
-    export JULIA_DEBUG=Jus
+    export JULIA_DEBUG=all
 fi
 if [ -e "$DIR/jus.so" ]; then
     echo SYSIMAGE: "$DIR/jus.so"
-    exec julia -O 0 -J "$DIR/jus.so" "--project=$DIR" "$DIR/test/test.jl"
+    exec julia $ARGS -J "$DIR/jus.so" "--project=$DIR" "$DIR/test/test.jl"
 else
-    exec julia "--project=$DIR" "$DIR/test/test.jl"
+    exec julia $ARGS "--project=$DIR" "$DIR/test/test.jl"
 fi

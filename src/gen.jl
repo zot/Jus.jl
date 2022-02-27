@@ -8,6 +8,12 @@ const GEN_FIELDS = """
 {{/fields}}</div>
 """
 
+const GEN_TUPLE = """
+<div data-var='{{field}}'>{{#fields}}
+  {{{.}}}
+{{/fields}}</div>
+"""
+
 const GEN_SHOW = """
 <div data-text='repr()'></div>
 """
@@ -135,6 +141,14 @@ gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}
            (;
             introspect(fld)...,
             type = typename(field_type)))
+
+#gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
+#    owner, ns, field, field_type <: Tuple, first
+#} =
+#    render(GEN_FIELDS,
+#           field,
+#           fields
+
 
 #list
 #gen_field(cmd::VarCommand, fld::Type{Field{owner, ns, field, field_type, first}}) where {
