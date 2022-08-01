@@ -90,8 +90,8 @@ function in_vscode()
     end
 end
 
-function inspect(item)
-    in_vscode() && return Presenter(item)
+function inspect(item; browser = false)
+    !browser && in_vscode() && return Presenter(item)
     ensure_server()
     Jus.present(replconfig, item)
 end

@@ -17,9 +17,12 @@ HTML, console UIs, or even a 3D engine like Minecraft or Unreal.
 ./sample 2
 ```
 
-## In the VSCode REPL
+## In the REPL
 
-Calling `Jus.Shell.inspect(data)` will pop up a GUI in the plots area.
+Calling `Jus.Shell.inspect(data)` will pop up a GUI on data. If you're
+in VSCode, the GUI will show in the plots area, otherwise it will show
+in the browser. You can make it show in the browser from VSCode by
+using `Jus.Shell.inspect(data, browser = true)`.
 
 ![demo](img/jus-demo.gif)
 
