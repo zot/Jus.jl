@@ -6,6 +6,11 @@ Jus is a presentation engine for Julia to support "no-code
 GUIs". Its paradigm-neutral protocol allows you to frontend it with
 HTML, console UIs, or even a 3D engine like Minecraft or Unreal.
 
+# "No-code GUIs"
+
+* Keep all your logic in Julia (not JavaScript)
+* Keep all your data definitions in Julia (not duplicated in JavaScript and GraphQL)
+
 # To run the example:
 
 ```sh

@@ -10,6 +10,8 @@ using DefaultApplication
 using Sockets
 using Sockets: TCPServer
 using Mustache
+using Logging
+using UUIDs
 
 import Base.@kwdef
 
@@ -18,6 +20,7 @@ include("vars.jl")
 include("server.jl")
 include("gen.jl")
 include("local.jl")
+include("shell.jl")
 
 const CONVERT_ENUM = r"^enum:(.*)$"
 
@@ -108,14 +111,25 @@ function abort(msg...)
     exit(1)
 end
 
+Base.eof(ws::HTTP.WebSocket) = eof(ws.io)
+
+Base.isopen(ws::HTTP.WebSocket) = isopen(ws.io)
+
+Base.bytesavailable(ws::HTTP.WebSocket) = bytesavailable(ws.io) > 0
+
 output(ws; args...) = output(ws, args)
+function output(ws::HTTP.WebSocket, data)
+    HTTP.send(ws, JSON3.write(data))
+    @debug("WROTE: $(JSON3.write(data))")
+end
 function output(ws, data)
     write(ws, JSON3.write(data))
     flush(ws)
     @debug("WROTE: $(JSON3.write(data))")
 end
 
-input(ws) = JSON3.read(readavailable(ws))
+#input(ws) = JSON3.read(readavailable(ws))
+input(ws::HTTP.WebSocket) = JSON3.read(HTTP.receive(ws))
 
 # no need for JSON with FakeWS
 output(ws::FakeWS, data) = put!(ws.output, data)
@@ -140,46 +154,47 @@ function client(config::Config)
 end
 
 function exec(serverfunc, args::Vector{String}; config = Config())
-    local browse = ""
+    #local browse = ""
 
-    interactive = "-i" in args
-    interactive && (args = filter(x-> x != "-i", args))
-    if interactive && (isempty(args) || match(r"^-.*$", args[1]) !== nothing)
-        i = 1
-    else
-        # name required -- only one instance per name allowed
-        (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && !("-i" in args) && usage()
-        config.serverfunc = serverfunc
-        config.namespace.name = args[1]
-        i = 2
-    end
-    while i <= length(args)
-        @match args[i] begin
-            "-i" => (interactive = true)
-            "-e" => Main.eval(Meta.parse(args[i += 1]))
-            "-d" => add_file_dir(args[i += 1])
-            "-v" => (config.verbose = true)
-            "-x" => (config.namespace.secret = args[i += 1])
-            "-c" => parseAddr(config, args[i += 1])
-            "-b" => (browse = args[i += 1])
-            "-s" => begin
-                parseAddr(config, args[i += 1])
-                config.server = true
-            end
-            unknown => begin
-                @debug("MATCHED DEFAULT: $(args[i:end])")
-                push!(config.args, args[i:end]...)
-                i = length(args)
-                break
-            end
-        end
-        i += 1
-    end
-    interactive && return
-    atexit(()-> shutdown(config))
-    config.server && browse != "" && present(config, browse)
-    (config.server ? server : client)(config)
-    config
+    #interactive = "-i" in args
+    #interactive && (args = filter(x-> x != "-i", args))
+    #if interactive && (isempty(args) || match(r"^-.*$", args[1]) !== nothing)
+    #    i = 1
+    #else
+    #    # name required -- only one instance per name allowed
+    #    (length(args) === 0 || match(r"^-.*$", args[1]) !== nothing) && !("-i" in args) && usage()
+    #    config.serverfunc = serverfunc
+    #    config.namespace.name = args[1]
+    #    i = 2
+    #end
+    #while i <= length(args)
+    #    arg = args[i]
+    #    @match args[i] begin
+    #        "-i" => (interactive = true)
+    #        "-e" => Main.eval(Meta.parse(args[i += 1]))
+    #        "-d" => add_file_dir(args[i += 1])
+    #        "-v" => (config.verbose = true)
+    #        "-x" => (config.namespace.secret = args[i += 1])
+    #        "-c" => parseAddr(config, args[i += 1])
+    #        "-b" => (browse = args[i += 1])
+    #        "-s" => begin
+    #            parseAddr(config, args[i += 1])
+    #            config.server = true
+    #        end
+    #        unknown => begin
+    #            @debug("MATCHED DEFAULT: $(args[i:end])")
+    #            push!(config.args, args[i:end]...)
+    #            i = length(args)
+    #            break
+    #        end
+    #    end
+    #    i += 1
+    #end
+    #interactive && return
+    #atexit(()-> shutdown(config))
+    #config.server && browse != "" && present(config, browse)
+    #(config.server ? server : client)(config)
+    #config
 end
 
 """
@@ -211,7 +226,7 @@ function start(config::Config, socket::TCPServer, data; dirs = [], async = true,
     create_output != "" && mkpath(create_output)
     data !== nothing && data !== Nothing && present(config, data, metadata)
     for dir in dirs
-        add_file_dir(dir)
+        add_file_dir(config, dir)
     end
     if async
         @async server(config, socket)
@@ -221,10 +236,12 @@ function start(config::Config, socket::TCPServer, data; dirs = [], async = true,
     config
 end
 
-function refresh(config::Config)
+function refresh(config::Config; force = false)
     for con in values(config.connections)
-        if !con.refresh_queued && !haskey(con.pending_result, :result)
-            finish_command(JusCmd(config, con, "refresh"))
+        run(con) do
+            if force || (!con.refresh_queued && !haskey(con.pending_result, :result))
+                finish_command(JusCmd(config, con, "refresh"), force)
+            end
         end
     end
 end
@@ -242,6 +259,7 @@ function present(config::Config, data, metadata = (;))
             exit(1)
         end
     end
+    var
 end
 present(config::Config, type::Type, metadata = (;)) =
     present(config, "$(Base.parentmodule(type)).$type", metadata)
@@ -390,7 +408,7 @@ function default_handle(value, cmd::VarCommand{:metadata, (:path,)})
 end
 
 function default_handle(value, cmd::VarCommand{:metadata, (:access,)})
-    println("@@@ ACCESS METADATA: $(repr(cmd))")
+    #println("@@@ ACCESS METADATA: $(repr(cmd))")
     set_access_from_metadata(cmd.var)
 end
 
@@ -405,7 +423,7 @@ function default_handle(value, cmd::VarCommand{:metadata, (:convert,)})
         # safe to eval because m[1] is just "ident(.ident)*"
         values = Dict(lowercase(string(inst)) => inst for inst in instances(Main.eval(Meta.parse(m[1]))))
         cmd.var.value_conversion = v-> values[lowercase(v)]
-        println("###\n### CREATED CONVERTER $(cmd.var.metadata[:convert]) FOR $(cmd.var)")
+        #println("###\n### CREATED CONVERTER $(cmd.var.metadata[:convert]) FOR $(cmd.var)")
     else
         throw("Could not create converter $(cmd.var.metadata[:convert]) for $(cmd.var)")
     end
@@ -419,7 +437,7 @@ function default_handle(value, cmd::VarCommand{:set})
         cmd.creating && changed(cmd.config, cmd.var)
         set_type(cmd)
     elseif cmd.var.writeable
-        println("@@@@@@@@ SET PATH: $(cmd.var.path) OF $(cmd.var)")
+        @debug "@@@@@@@@ SET PATH: $(cmd.var.path) OF $(cmd.var)"
         set_path(cmd)
     end
     !cmd.cancel && !cmd.var.action && changed(cmd.config, cmd.var)

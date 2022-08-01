@@ -1,5 +1,10 @@
+* VSCode REPL integration
+- display HTML according to Sebastian's details
+- trigger updates after user events so GUIs update after exprs
 * BUGS
-
+** Change websocket handler to channel and for-loop
+* Make declarative structure for generated GUIs (and halfway generated ones)
+** use convert() to convert structs into the declarative structure to allow customization
 * Commands
 Monitored values are pushed
 ** 'set' [[-c] [[-m path] | [path value]]] ...

@@ -1,6 +1,5 @@
 const NUM = r"^[0-9]+$"
 const NAME = r"^\pL\p{Xan}*$"
-const FILE_PATH = [joinpath(PKGDIR, "html")]
 
 function resolve(cmd::JusCmd, vars, str)
     if str == "?"
@@ -107,7 +106,7 @@ function command(cmd::JusCmd{:set})
             parentvalue = var.parent == EMPTYID ? nothing : cmd.config[var.parent].value
             try
                 pval = var.parent != EMPTYID ? parent_value(cmd.config, var) : nothing
-                println("%%%\n%%% SETTING VARIABLE ($(pval)).$(var) FROM $(var.internal_value) TO $(value)")
+                @debug "%%%\n%%% SETTING VARIABLE ($(pval)).$(var) FROM $(var.internal_value) TO $(value)"
                 route(parentvalue, VarCommand(cmd, :set, (), var; arg = creating ? var.value : value, creating))
             catch err
                 if err isa CmdException && err.type == :path
@@ -166,29 +165,45 @@ function output(cmd::JusCmd{NAME}; data...) where NAME
     con.pending_result = merge(con.pending_result, d)
 end
 
-function finish_command(cmd::JusCmd)
+function finish_command(cmd::JusCmd, force = false)
     con = connection(cmd)
-    println("PENDING RESULT: $(con.pending_result)")
-    if haskey(con.pending_result, :result)
+    @debug "PENDING RESULT: $(con.pending_result)"
+    if force || haskey(con.pending_result, :result)
         refresh(cmd)
         observe(cmd)
         con.refresh_queued = false
+        cleanup_oids(con)
     elseif !con.refresh_queued
         con.refresh_queued = true
         @async begin
             try
                 sleep(0.2)
-                #this could have been preempted by a command
-                if con.refresh_queued
-                    refresh(cmd)
-                    observe(cmd)
-                    con.refresh_queued = false
-                end
+                #if another command ran, refresh_queued will be false
+                con.refresh_queued && finish_command(cmd, true)
             catch err
                 exit(1)
             end
         end
     end
+end
+
+"""
+    cleanup_oids(con::Connection)
+
+Remove oids that variables are not using
+"""
+function cleanup_oids(con::Connection)
+    newoid2data = Dict{Int, Any}()
+    newdata2oid = Dict{Any, Int}()
+    for var in con.vars
+        if haskey(con.data2oid, var.value)
+            oid = con.data2oid[var.value]
+            newoid2data[oid] = var.value
+            newdata2oid[var.value] = oid
+        end
+    end
+    con.oid2data = newoid2data
+    con.data2oid = newdata2oid
 end
 
 function observe(cmd::JusCmd)
@@ -238,10 +253,14 @@ function refresh(cmd::JusCmd, var::Var)
         parent = parent_value(cmd.config, var)
         if parent !== nothing
             old = var.json_value
+            wasref = var.ref
+            oldref = var.value
             var.refresh_exception = nothing
             try
                 route(parent, VarCommand(:get, (); var, config = cmd.config, connection = connection(cmd)))
-                old !== var.json_value && changed(cmd.config, var)
+                if !(wasref && var.ref && oldref === var.value) && old !== var.json_value
+                    changed(cmd.config, var)
+                end
             catch err
                 var.refresh_exception = err
                 var.error_count += 1
@@ -265,8 +284,38 @@ Handle errors during refresh. Log path errors at the debug level.
 refresh_error(var::Var, ex::CmdException{:path}, bt) = @debug "Error refreshing variable $(var)" exception=(ex, bt)
 refresh_error(var::Var, ex, bt) = @error "Error refreshing variable $(var)" exception=(ex, bt)
 
+"""
+    run(func, con)
+
+run func in the server's task
+"""
+function run(func::Function, con, wait = false)
+    !wait && return put!(con.control,
+                         ()-> try
+                             func()
+                         catch err
+                             con.last_control_exception = CapturedException(err, catch_backtrace())
+                         end)
+    chan = Channel(1)
+    put!(con.control,
+         ()-> begin
+             try
+                 put!(chan, (func(), ))
+             catch err
+                 con.last_control_exception = CapturedException(err, catch_backtrace())
+                 @error "Error running control function" exception=con.last_control_exception
+                 put!(chan, con.last_control_exception)
+             end
+         end)
+    result = take!(chan)
+    !(result isa Tuple) && throw(result)
+    result[1]
+end
+
 function serve(config::Config, ws)
-    (; namespace, secret) = input(ws)
+    i = input(ws)
+    namespace = i.namespace
+    secret = i.secret
     if haskey(config.namespaces, namespace)
         if config.namespaces[namespace].secret !== secret
             @debug("Bad attempt to connect for $(namespace)")
@@ -279,25 +328,41 @@ function serve(config::Config, ws)
     con = Connection(; ws, namespace)
     config.connections[ws] = con
     config.init_connection(con)
-    @debug("Connection for $(namespace)")
-    while !eof(ws)
-        cmd = nothing
+    serve_control(con)
+    try
+        @debug("Connection for $(namespace)")
+        for msg in ws
+            #(Base.@invokelatest serve_one(config, ws, con, namespace)) || break
+            Base.@invokelatest handlecmd(config, ws, msg, con, namespace)
+        end
+        close(config, con)
+        @debug("CLIENT CLOSED: $(repr(namespace))")
+    catch err
+        @error "Error handling websocket" exception=(err, catch_backtrace())
+    end
+end
+
+function serve_control(con::Connection)
+    @async while isopen(con.control)
         try
-            !isopen(ws) && break
-            cmd = [input(ws)...]
-            jcmd = JusCmd(config, ws, namespace, cmd)
-            command(jcmd)
-            finish_command(jcmd)
+            take!(con.control)()
         catch err
             if !(err isa Base.IOError || err isa HTTP.WebSockets.WebSocketError)
                 err isa ArgumentError && println(err)
-                @error "Error handling comand $(cmd) $(err)" exception=(err, catch_backtrace())
+                @error "Error handling comand $(err)" exception=(err, catch_backtrace())
+            else
+                @error "OTHER ERROR" exception=(err, catch_backtrace())
             end
-            break
         end
     end
-    close(config, con)
-    @debug("CLIENT CLOSED: $(repr(namespace))")
+end
+
+function handlecmd(config::Config, ws, cmd, con::Connection, namespace)
+    run(con, true) do
+        jcmd = JusCmd(config, ws, namespace, JSON3.read(cmd, Vector))
+        command(jcmd)
+        finish_command(jcmd)
+    end
 end
 
 function close(config::Config, con::Connection)
@@ -324,18 +389,17 @@ const MIME_TYPES_FOR_EXTENSIONS = Dict(
 function mime_type(filename::AbstractString)
     m = match(FILE_EXT_PAT, filename)
     m === nothing && throw("Unknown MIME type for filename $(filename)")
-    _, ext = m
+    _, ext = m.captures
     return get(MIME_TYPES_FOR_EXTENSIONS, ext) do
         throw("Unknown MIME type for filename $(filename) with extension $(ext)")
     end
 end
 
-add_file_dir(dirname) = push!(FILE_PATH, realpath(dirname))
+add_file_dir(config::Config, dirname) = push!(config.filepath, realpath(dirname))
 
-function find_file(path)
-    for dir in FILE_PATH
-        dpath = joinpath(dir, path)
-        println("TRYING PATH $dpath")
+function find_file(config::Config, path)
+    for dir in config.filepath
+        dpath = normpath(joinpath(dir, path))
         if isdir(dpath)
             return :directory, dpath
         elseif isfile(dpath)
@@ -345,15 +409,22 @@ function find_file(path)
     return :missing, path
 end
 
+# open CORS headers
+const CORS_HEADERS = [
+    "Access-Control-Allow-Origin" => "*",
+    "Access-Control-Allow-Headers" => "*",
+    "Access-Control-Allow-Methods" => "POST, GET, OPTIONS"
+]
+
 """
     serve_file
 
 taken from [yig's file server](https://gist.github.com/yig/f65e86b7730019d4060449f24342fcb4)
 enhanced to handle mime types
 """
-function serve_file(req::HTTP.Request)
+serve_file(config::Config) = (req::HTTP.Request)-> begin
     ## If it's not a path inside the jail (current working directory), return a 403.
-    jail = realpath(FILE_PATH[1])
+    jail = realpath(config.filepath[1])
     # println( "Jail path: ", jail )
         
     ## Convert the request path to a real path (remove symlinks, remove . and ..)
@@ -366,50 +437,78 @@ function serve_file(req::HTTP.Request)
     ## Drop the leading "/".
     request_path = normpath(joinpath(jail, target[2:end]))
     ## Convert it to a relative path.
-    relative_path = relpath(request_path, jail)
-    println("Requested path: ", request_path)
-    println("Relative path: ", relative_path)
+    relative_path = normpath(relpath(request_path, jail))
+    #println("Requested path: ", request_path)
+    #println("Relative path: ", relative_path)
     ## Return forbidden if the request is above the current working directory.
     length(relative_path) > 0 && splitpath(relative_path)[1] == ".." &&
-        @show return HTTP.Response(403)
-    type, filepath = find_file(relative_path)
+        return HTTP.Response(403, CORS_HEADERS)
+    type, filepath = find_file(config, relative_path)
     ## Return not implemented if the request is for a directory.
     if type == :directory
         ## Is there an index.html?
-        index = joinpath(filepath, "index.html")
-        if isfile(index)
-            HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read(index))
+        type, index = find_file(config, joinpath(relative_path, "index.html"))
+        if type == :file && isfile(index)
+            HTTP.Response(200, ["Content-Type" => mime_type(target), CORS_HEADERS...],
+                          body = read(index))
         else
-            @show HTTP.Response(501)
+            HTTP.Response(501, CORS_HEADERS)
         end
         ## Return the contents for a file.
     elseif type == :file
-        HTTP.Response(200, ["Content-Type" => mime_type(target)], body = read(filepath))
+        HTTP.Response(200, ["Content-Type" => mime_type(target), CORS_HEADERS...],
+                      body = read(filepath))
     else
         ## If it's not a file, return a 404.
-        @show HTTP.Response(404)
+        HTTP.Response(404, CORS_HEADERS)
+    end
+end
+
+return_cors_headers = HTTP.streamhandler() do r
+    HTTP.Response(200, CORS_HEADERS)
+end
+
+function route(config::Config)
+    filehandler = HTTP.streamhandler(serve_file(config))
+    function(stream::HTTP.Stream)
+        req = stream.message
+        if HTTP.hasheader(req, "OPTIONS")
+            #println("OPTIONS REQUEST: $(stream.message)")
+            return_cors_headers(stream)
+        elseif req.target == "/ws" && HTTP.WebSockets.isupgrade(req)
+            HTTP.WebSockets.upgrade(stream) do ws
+                #println("HANDLE UPGRADE")
+                config.serverfunc(config, ws)
+            end
+        else
+            filehandler(stream)
+        end
     end
 end
 
 function server(config::Config, socket = nothing)
-    router = HTTP.Router()
-    function handle_request(http)
-        if http.message.target == "/ws"
-            HTTP.WebSockets.upgrade(http) do ws
-                config.serverfunc(config, ws)
-            end
-        else
-            HTTP.handle(router, http)
-        end
-    end
-
     println("SERVER ON $(config.host):$(config.port)")
-    HTTP.@register(router, "GET", "/ws", r-> serve_websocket(config, r))
-    HTTP.@register(router, "GET", "/", serve_file)
+    #local router = HTTP.Router()
+    #HTTP.register!(router, "GET", "/ws", function(req)
+    #                   if HTTP.WebSockets.isupgrade(req)
+    #                       HTTP.WebSockets.upgrade(req) do ws
+    #                           config.serverfunc(config, ws)
+    #                       end
+    #                   else
+    #                       HTTP.Response(404, "Bad websocket request")
+    #                   end
+    #               end)
+    #HTTP.register!(router, "GET", "/**", serve_file)
+    #local handler = wsrouter(config, router)
+    #local handler = router
     if socket === nothing
-        HTTP.listen(handle_request, config.host, config.port)
+        #HTTP.serve(handler, config.host, config.port)
+        #HTTP.listen(handler, config.host, config.port)
+        HTTP.listen(route(config), config.host, config.port)
     else
-        HTTP.listen(handle_request; server=socket)
+        #HTTP.serve(handler; server=socket)
+        #HTTP.listen(handler; server=socket)
+        HTTP.listen(route(config); server=socket)
     end
     @debug("HTTP SERVER FINISHED")
 end

@@ -12,6 +12,11 @@ const PKGDIR = MODULEDIR !== nothing ? dirname(dirname(MODULEDIR)) : pwd()
 const PASS = :pass
 const FAIL = :fail
 const SUBSTITUTE = :substitute
+const Astr = AbstractString
+
+mutable struct Presenter
+    item
+end
 
 struct UnknownVariable <:Exception
     name
@@ -36,6 +41,8 @@ Base.flush(ws::FakeWS) = nothing
 #Base.readavailable(com::FakeWS) = take!(com.input)
 Base.readavailable(com::FakeWS) = (str = take!(com.input); @debug("FAKE READING: $(repr(str))"); str)
 
+Base.bytesavailable(com::FakeWS) = isready(com.input) ? 1 : 0
+
 function Base.close(com::FakeWS)
     com.isopen = false
     Base.close(com.input, HTTP.WebSockets.WebSocketError(1005, "Closed"))
@@ -52,6 +59,8 @@ StructTypes.StructType(::Type{State}) = StructTypes.Mutable()
     namespace::String
     number::UInt = 0
 end
+
+ID(ns::AbstractString, num::Int) = ID(string(ns), convert(UInt, num))
 
 Base.show(io::IO, id::ID) = print(io, "$(id.namespace)/$(id.number)")
 
@@ -81,6 +90,7 @@ A variable:
     action::Bool = false
     path::Vector{Union{Number, Symbol, Function}} = []
     json_value = nothing
+    ref = false
     refresh_exception = nothing
     error_count = 0
     value_conversion = identity
@@ -92,20 +102,25 @@ end
     curid::Int = 0
 end
 
+ID(ns::Namespace, num) = ID(ns.name, num)
+
 @kwdef mutable struct Connection
     ws #::HTTP.WebSockets.WebSocket
     namespace::String
     observing::Set{ID} = Set()
     stop::Channel = Channel(1)
     apps::Dict = Dict()
-    oid2data::Dict{Int, WeakRef} = Dict()
-    data2oid::WeakKeyDict{Any, Int} = WeakKeyDict()
+    oid2data::Dict{Int, Any} = Dict()
+    data2oid::Dict{Any, Int} = Dict()
     nextOid::Int = 0
     refresh_queued::Bool = false
     pending_result::NamedTuple = (;)
     vars::Set{Var} = Set{Var}()
     requests::Set = Set()
     sequence::Int = 1
+    control::Channel = Channel(10)
+    control_count::Int = 0
+    last_control_exception = nothing
 end
 
 """
@@ -126,6 +141,7 @@ Singleton for this program's state.
     hostname::AbstractString = "localhost"
     port::UInt16 = UInt16(8181)
     server::Bool = false
+    filepath::Vector{String} = [joinpath(PKGDIR, "html")]
     diag::Bool = false
     proxy::Bool = false
     verbose::Bool = false
@@ -142,6 +158,9 @@ Singleton for this program's state.
     templates_dir::AbstractString = joinpath(PKGDIR, "templates")
     templates::Dict{Tuple{Symbol, Symbol}, AbstractString} =
         Dict{Tuple{Symbol, Symbol}, AbstractString}()
+    control::Channel = Channel(10)
+    last_control_exception = nothing
+    control_count = 0
 end
 
 @kwdef mutable struct JusCmd{NAME}
@@ -187,6 +206,7 @@ end
 has_path(var::Var) = var.parent != EMPTYID && !isempty(var.path)
 internal_value(var::Var) = has_path(var) ? var.internal_value : var.value
 parent_value(cfg::Config, var::Var) = var.parent == EMPTYID ? nothing : internal_value(cfg[var.parent])
+parent(cfg::Config, var::Var) = var.parent == EMPTYID ? nothing : cfg[var.parent]
 
 function VarCommand(cmd::Symbol, path::Union{Tuple{}, Tuple{Vararg{Symbol}}}; args...)
     VarCommand{cmd, path}(; args...)

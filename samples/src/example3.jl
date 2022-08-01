@@ -7,7 +7,4 @@ end
 
 const people = Person[]
 
-Jus.present(people;
-            Person = (;
-                      # specify what to gen
-            ))
+Jus.present(Jus.ListWithDetail(people))

@@ -88,7 +88,10 @@ function assert(condition::Bool, msg::Function, success::Function = ()-> "")
 end
 
 function test1()
-    config, task, ws = local_server("TEST")
+    server = local_server("TEST")
+    config = server.config
+    task = server.task
+    ws = server.con
     var(n) = config[ID("TEST", n)]
     output(ws, ["set", "-c", "@/0:create=PersonApp", "true"])
     expect(ws, :set, ["@/1"])

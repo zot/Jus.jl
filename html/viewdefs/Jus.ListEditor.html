@@ -1,0 +1,15 @@
+<div class='flex flex-row items-center w-100'>
+  <div class="grow relative px-6 pt-10 pb-8 bg-slate-500 shadow-xl ring-1 ring-gray-900/5 sm:max-w-lg sm:mx-auto sm:rounded-lg sm:px-10 self-stretch w-80">
+    <div class="max-w-md mx-auto">
+      <label data-attr-id='id' class='font-bold' data-text='label'></label>
+      <br/>
+      <fast-listbox
+        data-attr-aria-labeledby='id'
+        data-list='list'
+        data-on-selected='selection_index():defaults,get=selectedIndex,set=selectedIndex,adjustIndex'
+        data-namespace='ex2-list'></fast-listbox>
+    </div>
+  </div>
+  <div class='grow self-stretch' data-class-toggle='hide_editor:class=hidden' data-view='selection'>
+  </div>
+</div>

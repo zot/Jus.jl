@@ -11,7 +11,8 @@ export class Shell {
     this.env = new Env();
     this.namespace = crypto.randomUUID();
     this.secret = crypto.randomUUID();
-    await this.env.connect(location.host, this.namespace, this.secret);
+    var url = new URL(document.baseURI)
+    await this.env.connect(url.host, this.namespace, this.secret);
     console.log("JUS IS READY");
     if (vardef.startsWith('@')) {
       if (!vardef.match(/:/)) {

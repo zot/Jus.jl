@@ -1,5 +1,7 @@
 export addvar, within, allvars, REF, UNKNOWN, PATH_COMPONENT, isemptyid, json
 
+import Base.@invokelatest
+
 const REF = r"^\?([0-9]+)$"
 const LOCAL_ID = r"^@/([0-9]+)$"
 const UNKNOWN = "?"
@@ -13,7 +15,7 @@ oid(cmd::JusCmd, obj) = oid(connection(cmd), obj)
 function oid(con::Connection, obj)
     get!(con.data2oid, obj) do
         oid = con.nextOid += 1
-        con.oid2data[oid] = WeakRef(obj)
+        con.oid2data[oid] = obj
         oid
     end
 end
@@ -42,6 +44,8 @@ function json(cfg::Config, con::Connection, data)
         end
     end
 end
+
+isref(json) = json isa NamedTuple && haskey(json, :ref)
 
 Base.haskey(cfg::Config, id::ID) = haskey(cfg.vars, id)
 Base.getindex(cfg::Config, id::ID) = cfg.vars[id]
@@ -178,7 +182,7 @@ addvar(con::Connection, var::Var) = push!(con.vars, var)
 
 typename(value) = typename(typeof(value))
 
-typename(type::Type) = "$(Base.parentmodule(type)).$type"
+typename(type::Type) = "$(Base.parentmodule(type)).$(split(string(type), ".")[end])"
 
 function set_type(cmd::VarCommand)
     name = typename(cmd.var.internal_value)
@@ -353,6 +357,8 @@ end
 function get_path(cmd::VarCommand)
     !cmd.var.readable && throw(CmdException(:readable_error, cmd, "variable $(cmd.var) is not readable"))
     cmd.var.value = cmd.var.internal_value = basic_get_path(cmd, cmd.var.path)
-    cmd.var.json_value = JSON3.write(json(cmd, cmd.var.value))
+    json_value = json(cmd, cmd.var.value)
+    cmd.var.json_value = JSON3.write(json_value)
+    cmd.var.ref = isref(json_value)
     set_type(cmd)
 end

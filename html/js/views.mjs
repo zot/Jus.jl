@@ -60,10 +60,12 @@ export class View {
   disablingSelection = 0;
   defaultNodeType;
 
-  constructor(rootVar, namespace, parent, defaultNodeType = 'div') {
+  constructor(rootVar, namespace, parent, defaultNodeType = 'div', element = undefined) {
+    console.log('MAKING VIEW ON:', rootVar);
     this.rootVar = rootVar;
     this.namespace = namespace;
     this.type = rootVar.type;
+    this.element = element;
     rootVar.observe(()=> this.update());
     this.views.activeViews.add(this);
     this.defaultNodeType = defaultNodeType;
@@ -83,7 +85,6 @@ export class View {
     const viewdef = await this.views.fetchViewdef(this.rootVar, this.namespace, this.defaultNodeType);
 
     this.element = viewdef.cloneNode(true);
-    this.scan(this.element);
     return this;
   }
 
@@ -190,8 +191,8 @@ export class View {
   async scan(el) {
     await this.scanAttr(el, 'data-view', 'access=r', (v, node)=> {
       const namespace = node.getAttribute('data-namespace') || undefined;
-
-      new View(v, namespace, this)
+      console.log("SCANNED VIEW", el)
+      new View(v, namespace, this, undefined, el);
     })
     await this.scanAttr(el, 'data-var', 'access=r', ()=> {});
     await this.scanAttr(el, 'data-text', 'access=r', (v, node)=> v.observe(()=> node.textContent = v.value));
@@ -266,6 +267,8 @@ export class View {
       const oldElement = this.element;
       await this.fetchElement();
       oldElement.replaceWith(this.element);
+      console.log("Scanning view contents", this);
+      this.scan(this.element);
     }, this.element.parentElement);
   }
 
@@ -351,7 +354,7 @@ export class Views {
     if (namespace && (def = await this.fetchViewdefNamed(name))) return def;
     if (def = await this.fetchViewdefNamed(type)) return def;
     if (!rootVar.metadata.genview) {
-      await rootVar.setmeta("genview", namespace);
+      await rootVar.setmeta('genview', namespace);
       await defer(); // wait until after handling the update
       console.log("GENERATED VIEW FOR", rootVar);
       if (def = this.parseGenViewdef(rootVar, name)) return def;
@@ -372,6 +375,7 @@ export class Views {
 
   async fetchViewdefNamed(name) {
     try {
+      console.log(`FETCHING VIEWDEF FOR ${name}`);
       const result = await fetch(`viewdefs/${name}.html`);
 
       return this.registerViewdef(name, parseHtml(await result.text()));
