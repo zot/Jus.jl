@@ -1,0 +1,31 @@
+<div>
+  <div class='flex flex-col w-80'>
+  <fast-text-field
+    autofocus
+    appearance='filled'
+    data-value='name()'><span class='font-bold text-white'>name</span></fast-text-field>
+</div>
+
+
+  <div class='flex flex-col w-80'>
+  <fast-text-field
+    appearance='filled'
+    data-value='address'><span class='font-bold text-white'>address</span></fast-text-field>
+</div>
+
+
+  <div class='flex flex-col w-80'>
+  <fast-radio-group
+    data-value='favorite_color()'
+    data-on-change='favorite_color():defaults,get=value,set=value,convert=enum:Main.Color'>
+    <label slot='label' class='font-bold text-white'>favorite color</label>
+    <fast-radio value='red'>red</fast-radio><fast-radio value='blue'>blue</fast-radio><fast-radio value='yellow'>yellow</fast-radio><fast-radio value='green'>green</fast-radio>
+  </fast-radio-group>
+</div>
+
+
+  <div class='flex flex-col w-80'>
+  <fast-checkbox data-value='working()' data-on-change='working():defaults,get=checked,set=checked'>working</fast-checkbox>
+</div>
+
+</div>

@@ -9,7 +9,8 @@ import ..Jus
 import ..Jus: Presenter, Config
 
 const SHELL_HTML = read("$(dirname(@__DIR__))/html/vscode-shell.html", String)
-const JUS_CONFIG = "$(haskey(ENV, "HOME") ? ENV["HOME"] : "/tmp")/.julia/jus/repl.json"
+const JUS_DIR = "$(haskey(ENV, "HOME") ? ENV["HOME"] : "/tmp")/.julia/jus"
+const JUS_CONFIG = "$JUS_DIR/repl.json"
 
 """
     CONFIG_DEFAULTS
@@ -19,7 +20,7 @@ You can set them in ~/,julia/jus/repl.json
 """
 const CONFIG_DEFAULTS =
     (;
-     views = "~/.julia/jus/repl",
+     views = "$JUS_DIR/repl",
      verbose = true,
      namespace = "REPL",
      secret = "",
