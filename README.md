@@ -14,9 +14,14 @@ HTML, console UIs, or even a 3D engine like Minecraft or Unreal.
 # To run the example:
 
 ```sh
-cd samples/src
-julia --project=. -i example2.jl
+./sample 2
 ```
+
+## In the VSCode REPL
+
+Calling `Jus.Shell.inspect(data)` will pop up a GUI in the plots area.
+
+![demo](img/jus-demo.gif)
 
 # The HTML frontend
 

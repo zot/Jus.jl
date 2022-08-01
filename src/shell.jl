@@ -30,10 +30,6 @@ const CONFIG_DEFAULTS =
 
 settings = CONFIG_DEFAULTS
 
-getcurworld() = first(methods(()->nothing)).primary_world
-
-curworld = getcurworld()
-
 replconfig = nothing
 
 change_setting(; kw...) = settings = (; CONFIG_DEFAULTS..., kw...)::typeof(CONFIG_DEFAULTS)
