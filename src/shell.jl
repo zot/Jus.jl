@@ -81,7 +81,20 @@ function ensure_server()
     end
 end
 
-inspect(item) = Presenter(item)
+function in_vscode()
+    try
+        eval(:(Main.VSCodeServer))
+        true
+    catch
+        false
+    end
+end
+
+function inspect(item)
+    in_vscode() && return Presenter(item)
+    ensure_server()
+    Jus.present(replconfig, item)
+end
                         
 Base.showable(::MIME"juliavscode/html",::Presenter) = true
 function Base.show(io::IO, ::MIME"juliavscode/html", p::Presenter)
